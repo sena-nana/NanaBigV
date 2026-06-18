@@ -2,7 +2,6 @@
 import { computed } from "vue";
 import { useRoute } from "vue-router";
 import {
-  APP_SHELL_COPY,
   SETTINGS_TABS,
   SETTINGS_SECTIONS,
   normalizeSettingsTab,
@@ -20,10 +19,7 @@ const activeTabLabel = computed(
 <template>
   <section class="settings-page">
     <div class="page-header">
-      <div>
-        <h1>{{ activeTabLabel }}</h1>
-        <p>{{ APP_SHELL_COPY.settingsDescription }}</p>
-      </div>
+      <h1>{{ activeTabLabel }}</h1>
     </div>
 
     <component :is="activeTabSection" />

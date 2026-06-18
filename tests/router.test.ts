@@ -3,10 +3,10 @@ import { createMemoryHistory } from "vue-router";
 import { describe, expect, it } from "vitest";
 import App from "../src/App.vue";
 import { APP_SHELL_COPY } from "../src/config/appShell";
-import { createTemplateRouter } from "../src/router";
+import { createBigVRouter } from "../src/router";
 
 async function renderAt(path: string) {
-  const router = createTemplateRouter(createMemoryHistory());
+  const router = createBigVRouter(createMemoryHistory());
   await router.push(path);
   await router.isReady();
 
@@ -18,22 +18,28 @@ async function renderAt(path: string) {
 }
 
 describe("基础路由", () => {
-  it("默认首页显示模板占位内容", async () => {
+  it("默认首页跳转到弹幕姬工作台", async () => {
     await renderAt("/");
 
     expect(
       await screen.findByRole("heading", { level: 1, name: APP_SHELL_COPY.homeTitle }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "实时互动流" })).toBeInTheDocument();
   });
 
-  it("侧边栏左下角提供设置、扩展和状态入口", async () => {
+  it("侧边栏显示四个功能标签，底部保留设置和状态入口", async () => {
     await renderAt("/");
 
+    expect(screen.getByRole("navigation", { name: "主导航" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "弹幕姬" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "额度检查" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "观众信息" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "直播回顾" })).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "设置" })).toHaveLength(1);
-    expect(screen.getByRole("link", { name: "扩展" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "扩展" })).toBeNull();
     expect(
       screen.getByRole("link", { name: APP_SHELL_COPY.statusTitle }),
-    ).toHaveClass("sb-conn--ok");
+    ).toHaveClass("sb-conn--warn");
   });
 
   it("设置页默认显示外观设置并使用设置侧栏", async () => {
@@ -88,17 +94,54 @@ describe("基础路由", () => {
     expect(await screen.findByText("Tauri 2 + Vue 3")).toBeInTheDocument();
   });
 
-  it("扩展页显示模板占位内容", async () => {
-    await renderAt("/plugins");
+  it("弹幕姬页开关只切换本地状态", async () => {
+    await renderAt("/danmaku");
 
-    expect(await screen.findByRole("heading", { level: 1, name: "扩展" })).toBeInTheDocument();
-    expect(screen.getByText("当前模板不包含 Lilia 的真实插件管理逻辑。")).toBeInTheDocument();
+    const toggle = await screen.findByRole("switch", { name: "自动投递" });
+
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    await fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-checked", "false");
   });
 
-  it("未知路由回到首页", async () => {
+  it("额度检查页支持切换时间窗", async () => {
+    await renderAt("/quota");
+
+    expect(await screen.findByText("24 小时趋势")).toBeInTheDocument();
+    expect(screen.getByText("请求")).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("button", { name: "7 天" }));
+
+    expect(await screen.findByText("7 天趋势")).toBeInTheDocument();
+  });
+
+  it("观众信息页支持切换选中观众并按筛选自动同步详情", async () => {
+    await renderAt("/audience");
+
+    expect(await screen.findByRole("heading", { level: 2, name: "阿黎" })).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("button", { name: /北街舟/ }));
+
+    expect(await screen.findByRole("heading", { level: 2, name: "北街舟" })).toBeInTheDocument();
+
+    await fireEvent.change(screen.getByRole("combobox", { name: "关系类型筛选" }), {
+      target: { value: "new" },
+    });
+
+    expect(await screen.findByRole("heading", { level: 2, name: "糖霜六号" })).toBeInTheDocument();
+  });
+
+  it("直播回顾页显示主播快照和建议", async () => {
+    await renderAt("/review");
+
+    expect(await screen.findByText("主播：青栀")).toBeInTheDocument();
+    expect(screen.getByText("把调试段落拆成“目标 -> 过程 -> 结论”三段")).toBeInTheDocument();
+  });
+
+  it("未知路由回到弹幕姬", async () => {
     await renderAt("/missing");
 
-    expect(await screen.findByText(APP_SHELL_COPY.homeDescription)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: "实时互动流" })).toBeInTheDocument();
   });
 
   it("未知设置 tab 回落到外观", async () => {

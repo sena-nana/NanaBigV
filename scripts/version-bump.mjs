@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,7 +8,14 @@ import {
   writeIfChanged,
 } from "./app-config-sync.mjs";
 
-const root = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
+function resolveRoot(metaUrl) {
+  const packageUrl = new URL("../package.json", metaUrl);
+  return packageUrl.protocol === "file:"
+    ? dirname(fileURLToPath(packageUrl))
+    : process.cwd();
+}
+
+const root = resolveRoot(import.meta.url);
 const appConfigPath = resolve(root, "app.config.json");
 const trackedFiles = [
   appConfigPath,
@@ -24,7 +29,9 @@ const trackedFiles = [
   read: () => readFileSync(path, "utf8"),
 }));
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+const currentModulePath = import.meta.url.startsWith("file:") ? fileURLToPath(import.meta.url) : null;
+
+if (currentModulePath && process.argv[1] === currentModulePath) {
   try {
     run();
   } catch (error) {
