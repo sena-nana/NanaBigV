@@ -73,13 +73,13 @@ describe("单应用模板工具链", () => {
     expect(deps.zod).toBeUndefined();
   });
 
-  it("Rust 端只新增通用窗口状态 store 插件", () => {
+  it("Rust 端使用 store 持久化和 reqwest Provider HTTP 调用", () => {
     const cargo = readFileSync(resolve("src-tauri/Cargo.toml"), "utf-8");
 
     expect(cargo).toContain('tauri-plugin-store = "2"');
+    expect(cargo).toContain('reqwest = { version = "0.12"');
     expect(cargo).not.toContain("rusqlite");
     expect(cargo).not.toContain("r2d2");
-    expect(cargo).not.toContain("reqwest");
   });
 
   it("包管理器检查接受 Yarn 4 并拒绝其他入口", () => {

@@ -5,6 +5,7 @@ import {
   MessagesSquare,
   Palette,
   ScrollText,
+  Server,
   Settings,
   UsersRound,
 } from "@lucide/vue";
@@ -88,7 +89,7 @@ export const SIDEBAR_FOOTER_STATUS: SidebarFooterStatus = {
   icon: Gauge,
 };
 
-export type SettingsTabKey = "appearance" | "about";
+export type SettingsTabKey = "appearance" | "provider" | "about";
 
 export interface SettingsTab {
   key: SettingsTabKey;
@@ -105,6 +106,12 @@ export const SETTINGS_TABS: SettingsTab[] = [
     to: { path: "/settings", query: { tab: "appearance" } },
   },
   {
+    key: "provider",
+    label: "Provider",
+    icon: Server,
+    to: { path: "/settings", query: { tab: "provider" } },
+  },
+  {
     key: "about",
     label: "关于",
     icon: Info,
@@ -116,6 +123,7 @@ export const DEFAULT_SETTINGS_TAB: SettingsTabKey = "appearance";
 
 export const SETTINGS_SECTIONS: Record<SettingsTabKey, Component> = {
   appearance: defineAsyncComponent(() => import("../pages/settings/AppearanceSection.vue")),
+  provider: defineAsyncComponent(() => import("../pages/settings/ProviderSection.vue")),
   about: defineAsyncComponent(() => import("../pages/settings/AboutSection.vue")),
 };
 

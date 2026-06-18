@@ -24,6 +24,7 @@
 - 实现连通性测试和错误回显。
 - 固定 `ProviderClient` 的统一输入输出与错误模型。
 - 明确结构化输出约束的承载方式。
+- Provider 配置由本地 Rust store 托管，阶段 2 连通性测试固定走 `chat/completions + jsonObject`。
 
 完成判定：
 
