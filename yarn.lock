@@ -2304,6 +2304,31 @@ __metadata:
   languageName: node
   linkType: hard
 
+"bigv@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "bigv@workspace:."
+  dependencies:
+    "@lucide/vue": "npm:^1.17.0"
+    "@tauri-apps/api": "npm:^2.11.0"
+    "@tauri-apps/cli": "npm:^2.11.2"
+    "@tauri-apps/plugin-opener": "npm:^2.5.4"
+    "@tauri-apps/plugin-store": "npm:^2.4.3"
+    "@testing-library/dom": "npm:^10.4.1"
+    "@testing-library/jest-dom": "npm:^6.9.1"
+    "@testing-library/vue": "npm:^8.1.0"
+    "@vitejs/plugin-vue": "npm:^6.0.7"
+    "@vue/compiler-sfc": "npm:^3.5.35"
+    jsdom: "npm:^29.1.1"
+    typescript: "npm:^6.0.3"
+    vite: "npm:^8.0.16"
+    vitepress: "npm:^1.6.4"
+    vitest: "npm:^4.1.8"
+    vue: "npm:^3.5.35"
+    vue-router: "npm:^5.1.0"
+    vue-tsc: "npm:^3.3.4"
+  languageName: unknown
+  linkType: soft
+
 "birpc@npm:^2.3.0, birpc@npm:^2.6.1":
   version: 2.9.0
   resolution: "birpc@npm:2.9.0"
@@ -4573,31 +4598,6 @@ __metadata:
   checksum: 10c0/8f039edb1d12fdd7df6c6f9877d125afe9f3da3f5f9317df326fdd090d48793d6998cede1506a1471f3e3a250db270a89dace28005eb5e99c5a9132d704ac956
   languageName: node
   linkType: hard
-
-"tauri-template@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "tauri-template@workspace:."
-  dependencies:
-    "@lucide/vue": "npm:^1.17.0"
-    "@tauri-apps/api": "npm:^2.11.0"
-    "@tauri-apps/cli": "npm:^2.11.2"
-    "@tauri-apps/plugin-opener": "npm:^2.5.4"
-    "@tauri-apps/plugin-store": "npm:^2.4.3"
-    "@testing-library/dom": "npm:^10.4.1"
-    "@testing-library/jest-dom": "npm:^6.9.1"
-    "@testing-library/vue": "npm:^8.1.0"
-    "@vitejs/plugin-vue": "npm:^6.0.7"
-    "@vue/compiler-sfc": "npm:^3.5.35"
-    jsdom: "npm:^29.1.1"
-    typescript: "npm:^6.0.3"
-    vite: "npm:^8.0.16"
-    vitepress: "npm:^1.6.4"
-    vitest: "npm:^4.1.8"
-    vue: "npm:^3.5.35"
-    vue-router: "npm:^5.1.0"
-    vue-tsc: "npm:^3.3.4"
-  languageName: unknown
-  linkType: soft
 
 "tinybench@npm:^2.9.0":
   version: 2.9.0

@@ -2,7 +2,14 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
-const root = dirname(fileURLToPath(new URL("../package.json", import.meta.url)));
+function resolveRoot(metaUrl) {
+  const packageUrl = new URL("../package.json", metaUrl);
+  return packageUrl.protocol === "file:"
+    ? dirname(fileURLToPath(packageUrl))
+    : process.cwd();
+}
+
+const root = resolveRoot(import.meta.url);
 
 export function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));

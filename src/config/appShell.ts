@@ -1,18 +1,20 @@
 import {
+  BadgeDollarSign,
   FilePlus2,
-  Folder,
-  Home,
+  Gauge,
   Info,
-  MoreHorizontal,
+  MessagesSquare,
   Palette,
-  Puzzle,
   Search,
+  ScrollText,
   Settings,
-  Sparkles,
+  UsersRound,
 } from "@lucide/vue";
 import { defineAsyncComponent, type Component } from "vue";
 import type { RouteLocationRaw } from "vue-router";
 import appConfig from "../../app.config.json";
+import type { WorkbenchNavItem } from "../features/workbench/types";
+import { BIGV_WORKBENCH_SNAPSHOT } from "../features/workbench/mockSnapshot";
 
 export const APP_METADATA = {
   appName: appConfig.appName,
@@ -41,18 +43,9 @@ export interface SidebarActionItem {
 }
 
 export interface SidebarNavItem {
-  to?: string;
+  to: string;
   label: string;
   icon: Component;
-  tools?: SidebarActionItem[];
-  disabled?: boolean;
-}
-
-export interface SidebarGroup {
-  title: string;
-  tools?: SidebarActionItem[];
-  items?: SidebarNavItem[];
-  emptyText?: string;
 }
 
 export interface SidebarFooterLink {
@@ -70,47 +63,34 @@ export interface SidebarFooterStatus {
   icon: Component;
 }
 
+const WORKBENCH_NAV_ICONS: Record<WorkbenchNavItem["key"], Component> = {
+  danmaku: MessagesSquare,
+  quota: BadgeDollarSign,
+  audience: UsersRound,
+  review: ScrollText,
+};
+
 export const SIDEBAR_GLOBAL_ACTIONS: SidebarActionItem[] = [
   { key: "new", label: "新建", icon: FilePlus2, disabled: true },
   { key: "search", label: "搜索", icon: Search, disabled: true },
 ];
 
-export const SIDEBAR_NAV: SidebarNavItem[] = [
-  {
-    to: "/",
-    label: "概览",
-    icon: Home,
-    tools: [{ key: "new", label: "新建", icon: FilePlus2, disabled: true }],
-  },
-];
-
-export const SIDEBAR_GROUPS: SidebarGroup[] = [
-  {
-    title: "示例分组",
-    tools: [{ key: "more", label: "更多", icon: MoreHorizontal, disabled: true }],
-    items: [
-      {
-        label: APP_SHELL_COPY.workspaceName,
-        icon: Folder,
-        disabled: true,
-        tools: [{ key: "more", label: "更多", icon: MoreHorizontal, disabled: true }],
-      },
-    ],
-    emptyText: APP_SHELL_COPY.workspaceEmptyText,
-  },
-];
+export const SIDEBAR_NAV: SidebarNavItem[] = BIGV_WORKBENCH_SNAPSHOT.nav.map((item) => ({
+  to: item.to,
+  label: item.label,
+  icon: WORKBENCH_NAV_ICONS[item.key],
+}));
 
 export const SIDEBAR_FOOTER_LINKS: SidebarFooterLink[] = [
   { to: "/settings", label: "设置", icon: Settings },
-  { to: "/plugins", label: "扩展", icon: Puzzle },
 ];
 
 export const SIDEBAR_FOOTER_STATUS: SidebarFooterStatus = {
-  to: "/settings",
+  to: "/danmaku",
   label: APP_SHELL_COPY.statusLabel,
   title: APP_SHELL_COPY.statusTitle,
-  tone: "ok",
-  icon: Sparkles,
+  tone: "warn",
+  icon: Gauge,
 };
 
 export type SettingsTabKey = "appearance" | "about";

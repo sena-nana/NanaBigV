@@ -1,16 +1,14 @@
 <script setup lang="ts">
-import { RouterLink } from "vue-router";
 import { Plus } from "@lucide/vue";
+import { RouterLink } from "vue-router";
 import {
   APP_SHELL_COPY,
   SIDEBAR_FOOTER_LINKS,
   SIDEBAR_FOOTER_STATUS,
   SIDEBAR_GLOBAL_ACTIONS,
-  SIDEBAR_GROUPS,
   SIDEBAR_NAV,
 } from "../config/appShell";
 import SidebarFooter from "../components/sidebar/SidebarFooter.vue";
-import SidebarRowTools from "../components/sidebar/SidebarRowTools.vue";
 </script>
 
 <template>
@@ -33,7 +31,13 @@ import SidebarRowTools from "../components/sidebar/SidebarRowTools.vue";
       <div class="sb-section__header">
         <span class="sb-section__title">{{ APP_SHELL_COPY.workspaceSectionTitle }}</span>
         <div class="sb-section__tools">
-          <button type="button" class="sb-icon-btn" title="添加" aria-label="添加" disabled>
+          <button
+            type="button"
+            class="sb-icon-btn"
+            title="添加"
+            aria-label="添加"
+            disabled
+          >
             <Plus :size="14" aria-hidden="true" />
           </button>
         </div>
@@ -42,52 +46,14 @@ import SidebarRowTools from "../components/sidebar/SidebarRowTools.vue";
         <RouterLink
           v-for="item in SIDEBAR_NAV"
           :key="item.label"
-          :to="item.to ?? '/'"
+          :to="item.to"
           class="sb-tree__row"
           active-class="is-active"
-          :aria-disabled="item.disabled ? 'true' : undefined"
         >
           <component :is="item.icon" :size="14" aria-hidden="true" />
           <span class="sb-tree__name">{{ item.label }}</span>
-          <SidebarRowTools v-if="item.tools?.length" :tools="item.tools" />
         </RouterLink>
       </nav>
-    </div>
-
-    <div
-      v-for="group in SIDEBAR_GROUPS"
-      :key="group.title"
-      class="sb-section"
-    >
-      <div class="sb-section__header">
-        <span class="sb-section__title">{{ group.title }}</span>
-        <div v-if="group.tools?.length" class="sb-section__tools">
-          <button
-            v-for="tool in group.tools"
-            :key="tool.key"
-            type="button"
-            class="sb-icon-btn"
-            :title="tool.label"
-            :aria-label="tool.label"
-            :disabled="tool.disabled"
-          >
-            <component :is="tool.icon" :size="14" aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-      <div class="sb-tree">
-        <div
-          v-for="item in group.items"
-          :key="item.label"
-          class="sb-tree__row sb-tree__row--project"
-          :aria-disabled="item.disabled ? 'true' : undefined"
-        >
-          <component :is="item.icon" :size="14" aria-hidden="true" />
-          <span class="sb-tree__name">{{ item.label }}</span>
-          <SidebarRowTools v-if="item.tools?.length" :tools="item.tools" />
-        </div>
-        <p v-if="group.emptyText" class="sb-tree__empty">{{ group.emptyText }}</p>
-      </div>
     </div>
 
     <SidebarFooter
@@ -181,12 +147,6 @@ import SidebarRowTools from "../components/sidebar/SidebarRowTools.vue";
   min-height: 0;
 }
 
-.sb-tree__empty {
-  margin: 6px 8px;
-  color: var(--text-faint);
-  font-size: 12px;
-}
-
 .sb-tree__row {
   display: flex;
   align-items: center;
@@ -208,17 +168,6 @@ import SidebarRowTools from "../components/sidebar/SidebarRowTools.vue";
 .sb-tree__row.is-active {
   background: var(--bg-active);
   color: var(--accent);
-}
-
-.sb-tree__row:hover .sb-tree__hover-tools,
-.sb-tree__row:focus-within .sb-tree__hover-tools,
-.sb-tree__row.is-active .sb-tree__hover-tools {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.sb-tree__row--project {
-  color: var(--text-muted);
 }
 
 .sb-tree__name {

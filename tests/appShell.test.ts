@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor, within } from "@testing-library/vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { APP_SHELL_COPY, SIDEBAR_CONFIG } from "../src/config/appShell";
+import { SIDEBAR_CONFIG } from "../src/config/appShell";
 import AppShell from "../src/layouts/AppShell.vue";
 
 vi.mock("@tauri-apps/api/window", () => ({
@@ -14,18 +14,28 @@ vi.mock("@tauri-apps/api/window", () => ({
   }),
 }));
 
-async function renderAppShell(initialRoute = "/") {
+async function renderAppShell(initialRoute = "/danmaku") {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
       {
-        path: "/",
-        component: { template: "<div>home</div>" },
+        path: "/danmaku",
+        component: { template: "<div>danmaku</div>" },
         meta: { sidebar: "main", returnable: true },
       },
       {
-        path: "/plugins",
-        component: { template: "<div>plugins</div>" },
+        path: "/quota",
+        component: { template: "<div>quota</div>" },
+        meta: { sidebar: "main", returnable: true },
+      },
+      {
+        path: "/audience",
+        component: { template: "<div>audience</div>" },
+        meta: { sidebar: "main", returnable: true },
+      },
+      {
+        path: "/review",
+        component: { template: "<div>review</div>" },
         meta: { sidebar: "main", returnable: true },
       },
       {
@@ -33,7 +43,7 @@ async function renderAppShell(initialRoute = "/") {
         component: { template: "<div>settings</div>" },
         meta: { sidebar: "settings", lockSidebar: true, returnable: false },
       },
-      { path: "/:pathMatch(.*)*", redirect: "/" },
+      { path: "/:pathMatch(.*)*", redirect: "/danmaku" },
     ],
   });
   await router.push(initialRoute);
@@ -78,42 +88,26 @@ function sidebarRowForText(container: HTMLElement, text: string): HTMLElement {
   return row;
 }
 
-function hoverToolsIn(row: HTMLElement): HTMLElement {
-  const tools = row.querySelector(".sb-tree__hover-tools");
-  if (!(tools instanceof HTMLElement)) {
-    throw new Error("未找到行内工具按钮容器");
-  }
-  return tools;
-}
-
 beforeEach(() => {
   localStorage.clear();
 });
 
 describe("AppShell sidebar", () => {
-  it("主侧边栏行内部包含迁移自 Lilia 的悬停工具按钮", async () => {
-    const view = await renderAppShell("/plugins");
-    const overviewRow = sidebarRowForText(view.container, "概览");
-    const workspaceRow = sidebarRowForText(view.container, APP_SHELL_COPY.workspaceName);
+  it("主侧边栏切换为 BigV 四个功能标签", async () => {
+    const view = await renderAppShell("/quota");
+    const nav = view.getByRole("navigation", { name: "主导航" });
 
-    const overviewTools = hoverToolsIn(overviewRow);
-    const workspaceTools = hoverToolsIn(workspaceRow);
-    const overviewNew = within(overviewTools).getByRole("button", { name: "新建" });
-    const workspaceMore = within(workspaceTools).getByRole("button", { name: "更多" });
-
-    expect(overviewTools.parentElement).toBe(overviewRow);
-    expect(workspaceTools.parentElement).toBe(workspaceRow);
-    expect(overviewNew).toBeDisabled();
-    expect(workspaceMore).toBeDisabled();
-
-    await fireEvent.click(overviewTools);
-    await fireEvent.click(workspaceTools);
-
-    expect(view.router.currentRoute.value.fullPath).toBe("/plugins");
+    expect(nav).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "弹幕姬" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "额度检查" })).toHaveClass("is-active");
+    expect(within(nav).getByRole("link", { name: "观众信息" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "直播回顾" })).toBeInTheDocument();
+    expect(sidebarRowForText(view.container, "额度检查")).toHaveClass("sb-tree__row", "is-active");
+    expect(view.queryByText("BigV 工作台")).toBeNull();
   });
 
   it("左上角按钮切换左侧栏折叠状态并写回本地存储", async () => {
-    const view = await renderAppShell();
+    const view = await renderAppShell("/danmaku");
     const shell = shellElement(view.container);
     const collapse = view.getByRole("button", { name: "折叠左侧栏" });
 
@@ -197,18 +191,18 @@ describe("AppShell sidebar", () => {
     });
     expect(view.getByRole("button", { name: /关于/ })).toHaveClass("is-active");
 
-    await view.router.push("/");
+    await view.router.push("/danmaku");
     expect(shell).toHaveClass("is-sidebar-collapsed");
     expect(localStorage.getItem(SIDEBAR_CONFIG.collapsedStorageKey)).toBe("1");
   });
 
   it("设置页返回进入设置前的主窗口路由", async () => {
-    const view = await renderAppShell("/plugins");
+    const view = await renderAppShell("/review");
 
     await view.router.push("/settings?tab=about");
     await fireEvent.click(view.getByRole("button", { name: "返回" }));
     await waitFor(() => {
-      expect(view.router.currentRoute.value.fullPath).toBe("/plugins");
+      expect(view.router.currentRoute.value.fullPath).toBe("/review");
     });
   });
 });

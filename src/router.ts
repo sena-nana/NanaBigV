@@ -5,11 +5,13 @@ import {
 } from "vue-router";
 import AppShell from "./layouts/AppShell.vue";
 
-const HomePage = () => import("./pages/Home.vue");
-const PluginsPage = () => import("./pages/Plugins.vue");
+const DanmakuPage = () => import("./pages/Home.vue");
+const QuotaPage = () => import("./pages/Quota.vue");
+const AudiencePage = () => import("./pages/Audience.vue");
+const ReviewPage = () => import("./pages/Review.vue");
 const SettingsPage = () => import("./pages/Settings.vue");
 
-export function createTemplateRouter(history: RouterHistory = createWebHistory()) {
+export function createBigVRouter(history: RouterHistory = createWebHistory()) {
   return createRouter({
     history,
     routes: [
@@ -18,8 +20,11 @@ export function createTemplateRouter(history: RouterHistory = createWebHistory()
         component: AppShell,
         meta: { sidebar: "main", returnable: true },
         children: [
-          { path: "", component: HomePage, meta: { sidebar: "main", returnable: true } },
-          { path: "plugins", component: PluginsPage, meta: { sidebar: "main", returnable: true } },
+          { path: "", redirect: "/danmaku" },
+          { path: "danmaku", component: DanmakuPage, meta: { sidebar: "main", returnable: true } },
+          { path: "quota", component: QuotaPage, meta: { sidebar: "main", returnable: true } },
+          { path: "audience", component: AudiencePage, meta: { sidebar: "main", returnable: true } },
+          { path: "review", component: ReviewPage, meta: { sidebar: "main", returnable: true } },
           {
             path: "settings",
             component: SettingsPage,
@@ -27,9 +32,9 @@ export function createTemplateRouter(history: RouterHistory = createWebHistory()
           },
         ],
       },
-      { path: "/:pathMatch(.*)*", redirect: "/" },
+      { path: "/:pathMatch(.*)*", redirect: "/danmaku" },
     ],
   });
 }
 
-export const router = createTemplateRouter();
+export const router = createBigVRouter();
