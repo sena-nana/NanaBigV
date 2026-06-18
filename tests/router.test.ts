@@ -52,6 +52,7 @@ describe("基础路由", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "外观" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "设置分类" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /外观/ })).toHaveClass("is-active");
+    expect(screen.getByRole("button", { name: /Provider/ })).toBeInTheDocument();
     expect(await screen.findByRole("radiogroup", { name: "圆角" })).toBeInTheDocument();
     expect(screen.getByRole("slider", { name: "圆角半径" })).toBeInTheDocument();
     expect(screen.queryByText(/Claude|Codex|CC-Switch|agent/i)).toBeNull();

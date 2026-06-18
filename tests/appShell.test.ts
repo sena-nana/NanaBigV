@@ -191,9 +191,17 @@ describe("AppShell sidebar", () => {
     expect(view.getByRole("navigation", { name: "设置分类" })).toBeInTheDocument();
     expect(view.queryByRole("navigation", { name: "主导航" })).not.toBeInTheDocument();
     expect(view.getByRole("button", { name: /外观/ })).toHaveClass("is-active");
+    expect(view.getByRole("button", { name: /Provider/ })).toBeInTheDocument();
     expect(view.router.currentRoute.value.meta.sidebar).toBe("settings");
     expect(view.router.currentRoute.value.meta.lockSidebar).toBe(true);
     expect(localStorage.getItem(SIDEBAR_CONFIG.collapsedStorageKey)).toBe("1");
+
+    await fireEvent.click(view.getByRole("button", { name: /Provider/ }));
+
+    await waitFor(() => {
+      expect(view.router.currentRoute.value.fullPath).toBe("/settings?tab=provider");
+    });
+    expect(view.getByRole("button", { name: /Provider/ })).toHaveClass("is-active");
 
     await fireEvent.click(view.getByRole("button", { name: /关于/ }));
 

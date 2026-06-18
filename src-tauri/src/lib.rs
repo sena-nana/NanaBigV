@@ -3,6 +3,7 @@ use tauri::{utils::config::Color, Manager, WindowEvent};
 const MAIN_WINDOW_LABEL: &str = "main";
 const BG: Color = Color(0x18, 0x18, 0x18, 0xFF);
 
+mod provider;
 mod window_state;
 
 #[tauri::command]
@@ -29,13 +30,21 @@ pub fn run() {
             if window.label() != MAIN_WINDOW_LABEL {
                 return;
             }
-            if matches!(event, WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed) {
+            if matches!(
+                event,
+                WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed
+            ) {
                 if let Some(webview_window) = window.get_webview_window(MAIN_WINDOW_LABEL) {
                     window_state::persist_main_window_state(&window.app_handle(), &webview_window);
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![ping])
+        .invoke_handler(tauri::generate_handler![
+            ping,
+            provider::load_provider_config,
+            provider::save_provider_config,
+            provider::test_provider_connection
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
