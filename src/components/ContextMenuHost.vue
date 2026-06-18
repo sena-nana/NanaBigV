@@ -1,0 +1,180 @@
+<script setup lang="ts">
+import { nextTick, ref, watch } from "vue";
+import {
+  finalizeClosedContextMenu,
+  isContextMenuItemPending,
+  selectContextMenuItem,
+  useContextMenu,
+  type ContextMenuItem,
+} from "../composables/useContextMenu";
+import {
+  SB_LAYER_Z_INDEX,
+  clampAnchoredMenuPosition,
+  createAnchoredMenuPosition,
+  resolveMenuTransformOrigin,
+  SB_MENU_POP_TRANSITION_MS,
+} from "../composables/menuMotion";
+
+const { state } = useContextMenu();
+
+const menuEl = ref<HTMLElement | null>(null);
+const rendered = ref(false);
+const pos = ref(createAnchoredMenuPosition(0, 0));
+const origin = ref({ x: 0, y: 0 });
+
+function displayLabel(item: ContextMenuItem) {
+  return isContextMenuItemPending(item) ? item.confirmLabel : item.label;
+}
+
+function isDanger(item: ContextMenuItem) {
+  return item.danger || isContextMenuItemPending(item);
+}
+
+async function updateGeometry() {
+  const initialPos = createAnchoredMenuPosition(
+    state.x,
+    state.y,
+    state.anchorX,
+    state.anchorY,
+  );
+  pos.value = initialPos;
+  origin.value = resolveMenuTransformOrigin(initialPos);
+  await nextTick();
+  const element = menuEl.value;
+  if (!element) return;
+  const clampedPos = clampAnchoredMenuPosition(initialPos, element.offsetWidth, element.offsetHeight);
+  pos.value = clampedPos;
+  origin.value = resolveMenuTransformOrigin(clampedPos, element.offsetWidth, element.offsetHeight);
+}
+
+function onAfterLeave() {
+  finalizeClosedContextMenu();
+}
+
+watch(
+  () => [state.openSeq, state.open] as const,
+  ([, open]) => {
+    if (!open) {
+      rendered.value = false;
+      return;
+    }
+    rendered.value = true;
+    void updateGeometry();
+  },
+  { immediate: true },
+);
+</script>
+
+<template>
+  <Teleport to="body">
+    <Transition
+      name="sb-menu-pop"
+      :duration="SB_MENU_POP_TRANSITION_MS"
+      @after-leave="onAfterLeave"
+    >
+      <div
+        v-if="rendered"
+        ref="menuEl"
+        class="ctx-menu"
+        role="menu"
+        :style="{
+          left: `${pos.x}px`,
+          top: `${pos.y}px`,
+          zIndex: String(SB_LAYER_Z_INDEX.contextMenu),
+          '--sb-menu-origin-x': `${origin.x}px`,
+          '--sb-menu-origin-y': `${origin.y}px`,
+        }"
+      >
+        <button
+          v-for="(item, index) in state.items"
+          :key="item.id ?? index"
+          type="button"
+          class="ctx-menu__item"
+          :class="{
+            'ctx-menu__item--danger': isDanger(item),
+            'ctx-menu__item--pending': isContextMenuItemPending(item),
+          }"
+          :disabled="item.disabled"
+          role="menuitem"
+          @click="selectContextMenuItem(item)"
+        >
+          <component v-if="item.icon" :is="item.icon" :size="13" aria-hidden="true" />
+          <span class="ctx-menu__label">{{ displayLabel(item) }}</span>
+        </button>
+      </div>
+    </Transition>
+  </Teleport>
+</template>
+
+<style scoped>
+.ctx-menu {
+  position: fixed;
+  min-width: 180px;
+  max-width: min(320px, calc(100vw - 8px));
+  padding: 4px;
+  background: var(--bg-elev);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 28px -10px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  user-select: none;
+  transform-origin: var(--sb-menu-origin-x, 0px) var(--sb-menu-origin-y, 0px);
+  will-change: transform, opacity;
+}
+
+.ctx-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 28px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.ctx-menu__item:hover:not(:disabled) {
+  background: var(--bg-hover);
+  filter: none;
+}
+
+.ctx-menu__item:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.ctx-menu__item:disabled:hover {
+  background: transparent;
+}
+
+.ctx-menu__item--danger {
+  color: var(--err);
+}
+
+.ctx-menu__item--danger:hover:not(:disabled) {
+  background: var(--err-soft);
+}
+
+.ctx-menu__item--pending {
+  background: var(--err-soft);
+  font-weight: 600;
+}
+
+.ctx-menu__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+</style>
