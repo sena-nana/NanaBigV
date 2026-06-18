@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import StatusBadge from "../components/workbench/StatusBadge.vue";
-import { bigVWorkbenchDataSource } from "../features/workbench/dataSource";
+import { useWorkbenchStore } from "../features/workbench/store";
 import "../styles/page.css";
 import "../styles/workbench.css";
 
-const view = bigVWorkbenchDataSource.getReviewView();
+const { reviewView: view } = useWorkbenchStore();
 </script>
 
 <template>

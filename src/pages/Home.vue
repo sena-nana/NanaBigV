@@ -1,20 +1,15 @@
 <script setup lang="ts">
-import { ref } from "vue";
 import StatusBadge from "../components/workbench/StatusBadge.vue";
 import { APP_SHELL_COPY } from "../config/appShell";
-import { bigVWorkbenchDataSource } from "../features/workbench/dataSource";
+import { useWorkbenchStore } from "../features/workbench/store";
 import type {
   DeliveryQueueStat,
   InteractionEvent,
-  RuntimeToggleState,
 } from "../features/workbench/types";
 import "../styles/page.css";
 import "../styles/workbench.css";
 
-const view = bigVWorkbenchDataSource.getDanmakuView();
-const toggles = ref<RuntimeToggleState[]>(view.toggles);
-const queueStats = view.queueStats;
-const recentEvents = view.recentEvents;
+const { danmakuView: view, toggleRuntime } = useWorkbenchStore();
 
 const interactionTypeLabels: Record<InteractionEvent["type"], string> = {
   danmaku: "弹幕",
@@ -22,11 +17,6 @@ const interactionTypeLabels: Record<InteractionEvent["type"], string> = {
   super_chat: "SC",
   membership: "舰长",
 };
-
-function toggleRuntime(key: string) {
-  toggles.value = toggles.value.map((toggle) =>
-    toggle.key === key ? { ...toggle, enabled: !toggle.enabled } : toggle);
-}
 
 function queueFillWidth(stat: DeliveryQueueStat) {
   const total = stat.queued + stat.delivered + stat.throttled;
@@ -66,7 +56,7 @@ function queueFillWidth(stat: DeliveryQueueStat) {
           </ul>
           <div class="workbench-list">
             <article
-              v-for="event in recentEvents"
+              v-for="event in view.recentEvents"
               :key="event.id"
               class="workbench-list-item"
             >
@@ -96,7 +86,7 @@ function queueFillWidth(stat: DeliveryQueueStat) {
           </div>
           <div class="workbench-chart-bars">
             <div
-              v-for="stat in queueStats"
+              v-for="stat in view.queueStats"
               :key="stat.type"
               class="workbench-chart-row"
             >
@@ -110,7 +100,7 @@ function queueFillWidth(stat: DeliveryQueueStat) {
             </div>
           </div>
           <ul class="workbench-kv danmaku-kv">
-            <li v-for="stat in queueStats" :key="`${stat.type}-detail`">
+            <li v-for="stat in view.queueStats" :key="`${stat.type}-detail`">
               <span>{{ stat.label }}</span>
               <strong>排队 {{ stat.queued }} / 节流 {{ stat.throttled }}</strong>
             </li>
@@ -123,7 +113,7 @@ function queueFillWidth(stat: DeliveryQueueStat) {
           <h2>功能启停</h2>
           <div class="toggle-list">
             <button
-              v-for="toggle in toggles"
+              v-for="toggle in view.toggles"
               :key="toggle.key"
               type="button"
               role="switch"

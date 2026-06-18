@@ -4,13 +4,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SIDEBAR_CONFIG } from "../src/config/appShell";
 import AppShell from "../src/layouts/AppShell.vue";
 
+const mockIsMaximized = vi.fn(async () => false);
+const mockOnResized = vi.fn(async () => vi.fn());
+const mockMinimize = vi.fn(async () => undefined);
+const mockToggleMaximize = vi.fn(async () => undefined);
+const mockClose = vi.fn(async () => undefined);
+
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
-    isMaximized: vi.fn(async () => false),
-    onResized: vi.fn(async () => vi.fn()),
-    minimize: vi.fn(async () => undefined),
-    toggleMaximize: vi.fn(async () => undefined),
-    close: vi.fn(async () => undefined),
+    isMaximized: mockIsMaximized,
+    onResized: mockOnResized,
+    minimize: mockMinimize,
+    toggleMaximize: mockToggleMaximize,
+    close: mockClose,
   }),
 }));
 
@@ -90,6 +96,11 @@ function sidebarRowForText(container: HTMLElement, text: string): HTMLElement {
 
 beforeEach(() => {
   localStorage.clear();
+  mockIsMaximized.mockClear();
+  mockOnResized.mockClear();
+  mockMinimize.mockClear();
+  mockToggleMaximize.mockClear();
+  mockClose.mockClear();
 });
 
 describe("AppShell sidebar", () => {
@@ -204,5 +215,19 @@ describe("AppShell sidebar", () => {
     await waitFor(() => {
       expect(view.router.currentRoute.value.fullPath).toBe("/review");
     });
+  });
+
+  it("标题栏窗口按钮会调用 Tauri 窗口控制", async () => {
+    const view = await renderAppShell("/danmaku");
+
+    await fireEvent.click(view.getByRole("button", { name: "最小化" }));
+    await fireEvent.click(view.getByRole("button", { name: "最大化" }));
+    await fireEvent.click(view.getByRole("button", { name: "关闭" }));
+
+    expect(mockMinimize).toHaveBeenCalledTimes(1);
+    expect(mockToggleMaximize).toHaveBeenCalledTimes(1);
+    expect(mockClose).toHaveBeenCalledTimes(1);
+    expect(mockOnResized).toHaveBeenCalledTimes(1);
+    expect(mockIsMaximized).toHaveBeenCalled();
   });
 });

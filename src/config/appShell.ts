@@ -1,11 +1,9 @@
 import {
   BadgeDollarSign,
-  FilePlus2,
   Gauge,
   Info,
   MessagesSquare,
   Palette,
-  Search,
   ScrollText,
   Settings,
   UsersRound,
@@ -70,10 +68,7 @@ const WORKBENCH_NAV_ICONS: Record<WorkbenchNavItem["key"], Component> = {
   review: ScrollText,
 };
 
-export const SIDEBAR_GLOBAL_ACTIONS: SidebarActionItem[] = [
-  { key: "new", label: "新建", icon: FilePlus2, disabled: true },
-  { key: "search", label: "搜索", icon: Search, disabled: true },
-];
+export const SIDEBAR_GLOBAL_ACTIONS: SidebarActionItem[] = [];
 
 export const SIDEBAR_NAV: SidebarNavItem[] = BIGV_WORKBENCH_SNAPSHOT.nav.map((item) => ({
   to: item.to,

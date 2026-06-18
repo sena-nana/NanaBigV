@@ -38,6 +38,40 @@ export function usePersistentBoolean(
   });
 }
 
+export interface PersistentStringOptions<T extends string> {
+  key: string;
+  defaultValue: T;
+  allowedValues?: readonly T[];
+}
+
+export function usePersistentString<T extends string>(
+  options: PersistentStringOptions<T>,
+): Ref<T> {
+  const stored = readStorage(options.key);
+  let value =
+    stored !== null &&
+    (!options.allowedValues || options.allowedValues.includes(stored as T))
+      ? (stored as T)
+      : options.defaultValue;
+
+  return customRef<T>((track, trigger) => {
+    return {
+      get() {
+        track();
+        return value;
+      },
+      set(nextValue) {
+        value =
+          !options.allowedValues || options.allowedValues.includes(nextValue)
+            ? nextValue
+            : options.defaultValue;
+        writeStorage(options.key, value);
+        trigger();
+      },
+    };
+  });
+}
+
 export interface PersistentNumberOptions {
   key: string;
   defaultValue: number;

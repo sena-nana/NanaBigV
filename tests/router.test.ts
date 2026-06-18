@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/vue";
 import { createMemoryHistory } from "vue-router";
 import { describe, expect, it } from "vitest";
 import App from "../src/App.vue";
-import { APP_SHELL_COPY } from "../src/config/appShell";
+import { APP_METADATA, APP_SHELL_COPY } from "../src/config/appShell";
 import { createBigVRouter } from "../src/router";
 
 async function renderAt(path: string) {
@@ -36,10 +36,14 @@ describe("基础路由", () => {
     expect(screen.getByRole("link", { name: "观众信息" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "直播回顾" })).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "设置" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "新建" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "搜索" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "添加" })).toBeNull();
     expect(screen.queryByRole("link", { name: "扩展" })).toBeNull();
     expect(
-      screen.getByRole("link", { name: APP_SHELL_COPY.statusTitle }),
-    ).toHaveClass("sb-conn--warn");
+      screen.getByRole("link", { name: "模拟状态：自动投递运行中" }),
+    ).toHaveClass("sb-conn--ok");
+    expect(screen.getByText("运行")).toBeInTheDocument();
   });
 
   it("设置页默认显示外观设置并使用设置侧栏", async () => {
@@ -102,6 +106,12 @@ describe("基础路由", () => {
     expect(toggle).toHaveAttribute("aria-checked", "true");
     await fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText("本地暂停投递")).toBeInTheDocument();
+    expect(screen.getByText("自动投递已暂停")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "模拟状态：自动投递已暂停" })).toHaveClass("sb-conn--warn");
+    expect(screen.getByText("暂停")).toBeInTheDocument();
+    expect(localStorage.getItem("bigv.workbench")).toContain("\"key\":\"dispatch\"");
+    expect(localStorage.getItem("bigv.workbench")).toContain("\"enabled\":false");
   });
 
   it("额度检查页支持切换时间窗", async () => {
@@ -113,6 +123,15 @@ describe("基础路由", () => {
     await fireEvent.click(screen.getByRole("button", { name: "7 天" }));
 
     expect(await screen.findByText("7 天趋势")).toBeInTheDocument();
+  });
+
+  it("额度检查页会恢复上次选择的时间窗", async () => {
+    localStorage.setItem(`${APP_METADATA.storageKeyPrefix}.quotaWindow`, "30d");
+
+    await renderAt("/quota");
+
+    expect(await screen.findByText("30 天趋势")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "30 天" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("观众信息页支持切换选中观众并按筛选自动同步详情", async () => {
@@ -129,6 +148,20 @@ describe("基础路由", () => {
     });
 
     expect(await screen.findByRole("heading", { level: 2, name: "糖霜六号" })).toBeInTheDocument();
+  });
+
+  it("观众信息页会恢复筛选条件和上次选中的观众", async () => {
+    localStorage.setItem(`${APP_METADATA.storageKeyPrefix}.audienceActivityFilter`, "medium");
+    localStorage.setItem(`${APP_METADATA.storageKeyPrefix}.audienceSpendingFilter`, "low");
+    localStorage.setItem(`${APP_METADATA.storageKeyPrefix}.audienceRelationshipFilter`, "regular");
+    localStorage.setItem(`${APP_METADATA.storageKeyPrefix}.selectedAudienceId`, "jing-dao");
+
+    await renderAt("/audience");
+
+    expect(((await screen.findByRole("combobox", { name: "活跃度筛选" })) as HTMLSelectElement).value).toBe("medium");
+    expect((screen.getByRole("combobox", { name: "消费倾向筛选" }) as HTMLSelectElement).value).toBe("low");
+    expect((screen.getByRole("combobox", { name: "关系类型筛选" }) as HTMLSelectElement).value).toBe("regular");
+    expect(await screen.findByRole("heading", { level: 2, name: "镜岛" })).toBeInTheDocument();
   });
 
   it("直播回顾页显示主播快照和建议", async () => {
