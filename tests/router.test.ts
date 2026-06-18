@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/vue";
 import { createMemoryHistory } from "vue-router";
 import { describe, expect, it } from "vitest";
 import App from "../src/App.vue";
-import { APP_METADATA, APP_SHELL_COPY } from "../src/config/appShell";
+import { APP_METADATA } from "../src/config/appShell";
 import { createBigVRouter } from "../src/router";
 
 async function renderAt(path: string) {
@@ -21,10 +21,11 @@ describe("基础路由", () => {
   it("默认首页跳转到弹幕姬工作台", async () => {
     await renderAt("/");
 
-    expect(
-      await screen.findByRole("heading", { level: 1, name: APP_SHELL_COPY.homeTitle }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 2, name: "实时互动流" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: "功能启停" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "AI 建议" })).toBeInTheDocument();
+    expect(screen.getByText("把调试段落拆成“目标 -> 过程 -> 结论”三段")).toBeInTheDocument();
+    expect(screen.getByText("阿黎：这一段反应好快，像是真的在跟弹幕对线。")).toBeInTheDocument();
+    expect(screen.getByText("糖霜六号 [SC ¥30]：建议下一段切回剧情点评，不要一直卡在设置界面。")).toBeInTheDocument();
   });
 
   it("侧边栏显示四个功能标签，底部保留设置和状态入口", async () => {
@@ -107,8 +108,8 @@ describe("基础路由", () => {
     expect(toggle).toHaveAttribute("aria-checked", "true");
     await fireEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByText("本地暂停投递")).toBeInTheDocument();
     expect(screen.getByText("自动投递已暂停")).toBeInTheDocument();
+    expect(screen.getAllByText("自动投递已关闭，新的互动结果不会继续进入渲染队列。")).toHaveLength(2);
     expect(screen.getByRole("link", { name: "模拟状态：自动投递已暂停" })).toHaveClass("sb-conn--warn");
     expect(screen.getByText("暂停")).toBeInTheDocument();
     expect(localStorage.getItem("bigv.workbench")).toContain("\"key\":\"dispatch\"");
@@ -175,7 +176,7 @@ describe("基础路由", () => {
   it("未知路由回到弹幕姬", async () => {
     await renderAt("/missing");
 
-    expect(await screen.findByRole("heading", { level: 2, name: "实时互动流" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: "功能启停" })).toBeInTheDocument();
   });
 
   it("未知设置 tab 回落到外观", async () => {

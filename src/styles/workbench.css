@@ -2,6 +2,16 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: 0;
+}
+
+.workbench-page--fill {
+  height: 100%;
+  overflow: hidden;
+}
+
+.workbench-page .card {
+  margin-bottom: 0;
 }
 
 .workbench-main-grid {
@@ -9,12 +19,14 @@
   grid-template-columns: minmax(0, 1.9fr) minmax(280px, 1fr);
   gap: 12px;
   align-items: start;
+  min-height: 0;
 }
 
 .workbench-stack {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
 }
 
 .workbench-inline {
