@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, watch } from "vue";
 import StatusBadge from "../components/workbench/StatusBadge.vue";
-import { bigVWorkbenchDataSource } from "../features/workbench/dataSource";
+import { APP_METADATA } from "../config/appShell";
+import { usePersistentString } from "../composables/usePersistentState";
+import { useWorkbenchStore } from "../features/workbench/store";
 import type {
   AudienceActivityLevel,
   AudienceProfile,
@@ -11,15 +13,35 @@ import type {
 import "../styles/page.css";
 import "../styles/workbench.css";
 
-const view = bigVWorkbenchDataSource.getAudienceView();
+const { audienceView: view } = useWorkbenchStore();
+const ACTIVITY_FILTER_VALUES = ["all", "high", "medium", "low"] as const;
+const SPENDING_FILTER_VALUES = ["all", "high", "medium", "low"] as const;
+const RELATIONSHIP_FILTER_VALUES = ["all", "core", "regular", "new"] as const;
+const AUDIENCE_IDS = view.value.audiences.map((audience) => audience.id);
 
-const activityFilter = ref<AudienceActivityLevel | "all">("all");
-const spendingFilter = ref<AudienceSpendingTier | "all">("all");
-const relationshipFilter = ref<AudienceRelationship | "all">("all");
-const selectedAudienceId = ref(view.defaultAudienceId);
+const activityFilter = usePersistentString<AudienceActivityLevel | "all">({
+  key: `${APP_METADATA.storageKeyPrefix}.audienceActivityFilter`,
+  defaultValue: "all",
+  allowedValues: ACTIVITY_FILTER_VALUES,
+});
+const spendingFilter = usePersistentString<AudienceSpendingTier | "all">({
+  key: `${APP_METADATA.storageKeyPrefix}.audienceSpendingFilter`,
+  defaultValue: "all",
+  allowedValues: SPENDING_FILTER_VALUES,
+});
+const relationshipFilter = usePersistentString<AudienceRelationship | "all">({
+  key: `${APP_METADATA.storageKeyPrefix}.audienceRelationshipFilter`,
+  defaultValue: "all",
+  allowedValues: RELATIONSHIP_FILTER_VALUES,
+});
+const selectedAudienceId = usePersistentString<string>({
+  key: `${APP_METADATA.storageKeyPrefix}.selectedAudienceId`,
+  defaultValue: view.value.defaultAudienceId,
+  allowedValues: AUDIENCE_IDS,
+});
 
 const filteredAudiences = computed(() =>
-  view.audiences.filter((audience) => {
+  view.value.audiences.filter((audience) => {
     if (activityFilter.value !== "all" && audience.activityLevel !== activityFilter.value) return false;
     if (spendingFilter.value !== "all" && audience.spendingTier !== spendingFilter.value) return false;
     if (relationshipFilter.value !== "all" && audience.relationship !== relationshipFilter.value) return false;
@@ -29,7 +51,7 @@ const filteredAudiences = computed(() =>
 
 watch(filteredAudiences, (next) => {
   if (!next.some((item) => item.id === selectedAudienceId.value)) {
-    selectedAudienceId.value = next[0]?.id ?? "";
+    selectedAudienceId.value = next[0]?.id ?? view.value.defaultAudienceId;
   }
 }, { immediate: true });
 

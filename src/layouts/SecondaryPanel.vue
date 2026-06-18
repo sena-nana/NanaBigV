@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Plus } from "@lucide/vue";
+import { computed } from "vue";
 import { RouterLink } from "vue-router";
 import {
   APP_SHELL_COPY,
@@ -9,11 +9,49 @@ import {
   SIDEBAR_NAV,
 } from "../config/appShell";
 import SidebarFooter from "../components/sidebar/SidebarFooter.vue";
+import { useWorkbenchStore } from "../features/workbench/store";
+
+const { danmakuView } = useWorkbenchStore();
+
+const footerStatus = computed(() => {
+  const dispatchEnabled = danmakuView.value.toggles.some(
+    (toggle) => toggle.key === "dispatch" && toggle.enabled,
+  );
+  const hasError = danmakuView.value.notices.some((notice) => notice.tone === "error");
+
+  if (hasError) {
+    return {
+      ...SIDEBAR_FOOTER_STATUS,
+      label: "异常",
+      title: "模拟状态：存在需要处理的异常",
+      tone: "error" as const,
+    };
+  }
+
+  if (!dispatchEnabled) {
+    return {
+      ...SIDEBAR_FOOTER_STATUS,
+      label: "暂停",
+      title: "模拟状态：自动投递已暂停",
+      tone: "warn" as const,
+    };
+  }
+
+  return {
+    ...SIDEBAR_FOOTER_STATUS,
+    label: "运行",
+    title: "模拟状态：自动投递运行中",
+    tone: "ok" as const,
+  };
+});
 </script>
 
 <template>
   <aside class="secondary-panel">
-    <div class="sb-section sb-section--actions">
+    <div
+      v-if="SIDEBAR_GLOBAL_ACTIONS.length"
+      class="sb-section sb-section--actions"
+    >
       <button
         v-for="action in SIDEBAR_GLOBAL_ACTIONS"
         :key="action.key"
@@ -30,17 +68,6 @@ import SidebarFooter from "../components/sidebar/SidebarFooter.vue";
     <div class="sb-section">
       <div class="sb-section__header">
         <span class="sb-section__title">{{ APP_SHELL_COPY.workspaceSectionTitle }}</span>
-        <div class="sb-section__tools">
-          <button
-            type="button"
-            class="sb-icon-btn"
-            title="添加"
-            aria-label="添加"
-            disabled
-          >
-            <Plus :size="14" aria-hidden="true" />
-          </button>
-        </div>
       </div>
       <nav class="sb-tree" aria-label="主导航">
         <RouterLink
@@ -58,7 +85,7 @@ import SidebarFooter from "../components/sidebar/SidebarFooter.vue";
 
     <SidebarFooter
       :links="SIDEBAR_FOOTER_LINKS"
-      :status="SIDEBAR_FOOTER_STATUS"
+      :status="footerStatus"
     />
   </aside>
 </template>
@@ -93,21 +120,7 @@ import SidebarFooter from "../components/sidebar/SidebarFooter.vue";
   text-transform: uppercase;
 }
 
-.sb-section__tools {
-  margin-left: auto;
-  display: inline-flex;
-  gap: 2px;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-.sb-section__header:hover .sb-section__tools,
-.sb-section__header:focus-within .sb-section__tools {
-  opacity: 1;
-}
-
-.sb-action,
-.sb-icon-btn {
+.sb-action {
   border: 0;
   background: transparent;
   color: var(--text-muted);
@@ -125,15 +138,7 @@ import SidebarFooter from "../components/sidebar/SidebarFooter.vue";
   border-radius: var(--radius-sm);
 }
 
-.sb-icon-btn {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border-radius: var(--radius-xs);
-}
-
-.sb-action:hover,
-.sb-icon-btn:hover {
+.sb-action:hover {
   background: var(--bg-hover);
   color: var(--text);
   filter: none;

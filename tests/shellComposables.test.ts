@@ -5,6 +5,7 @@ import { SIDEBAR_CONFIG } from "../src/config/appShell";
 import {
   usePersistentBoolean,
   usePersistentNumber,
+  usePersistentString,
 } from "../src/composables/usePersistentState";
 import { useShellSidebar } from "../src/composables/useShellSidebar";
 
@@ -53,6 +54,29 @@ describe("persistent state composables", () => {
 
     expect(view.getByRole("button")).toHaveTextContent("4");
     expect(localStorage.getItem("test.number")).toBe("4");
+  });
+
+  it("持久化 string 会校验允许值并写回", async () => {
+    localStorage.setItem("test.string", "invalid");
+    const Probe = defineComponent({
+      setup() {
+        const mode = usePersistentString({
+          key: "test.string",
+          defaultValue: "a",
+          allowedValues: ["a", "b", "c"] as const,
+        });
+        return { mode };
+      },
+      template: `<button @click="mode = 'c'">{{ mode }}</button>`,
+    });
+
+    const view = render(Probe);
+    expect(view.getByRole("button")).toHaveTextContent("a");
+
+    await fireEvent.click(view.getByRole("button"));
+
+    expect(view.getByRole("button")).toHaveTextContent("c");
+    expect(localStorage.getItem("test.string")).toBe("c");
   });
 });
 

@@ -1,16 +1,23 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed } from "vue";
 import MiniLineChart from "../components/workbench/MiniLineChart.vue";
-import { bigVWorkbenchDataSource } from "../features/workbench/dataSource";
+import { APP_METADATA } from "../config/appShell";
+import { usePersistentString } from "../composables/usePersistentState";
+import { useWorkbenchStore } from "../features/workbench/store";
 import type { UsageWindowKey } from "../features/workbench/types";
 import "../styles/page.css";
 import "../styles/workbench.css";
 
-const view = bigVWorkbenchDataSource.getQuotaView();
-const activeWindow = ref<UsageWindowKey>(view.defaultWindow);
-const currentWindowData = computed(() => view.windowData[activeWindow.value]);
+const { quotaView: view } = useWorkbenchStore();
+const WINDOW_KEYS = view.value.windows.map((item) => item.key) as UsageWindowKey[];
+const activeWindow = usePersistentString<UsageWindowKey>({
+  key: `${APP_METADATA.storageKeyPrefix}.quotaWindow`,
+  defaultValue: view.value.defaultWindow,
+  allowedValues: WINDOW_KEYS,
+});
+const currentWindowData = computed(() => view.value.windowData[activeWindow.value]);
 const currentWindowLabel = computed(
-  () => view.windows.find((item) => item.key === activeWindow.value)?.label ?? "",
+  () => view.value.windows.find((item) => item.key === activeWindow.value)?.label ?? "",
 );
 
 function setWindow(next: UsageWindowKey) {

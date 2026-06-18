@@ -207,11 +207,3 @@ export interface BigVWorkbenchSnapshot {
   audience: AudienceViewModel;
   review: ReviewViewModel;
 }
-
-export interface BigVWorkbenchDataSource {
-  getSnapshot(): BigVWorkbenchSnapshot;
-  getDanmakuView(): DanmakuViewModel;
-  getQuotaView(): QuotaViewModel;
-  getAudienceView(): AudienceViewModel;
-  getReviewView(): ReviewViewModel;
-}
