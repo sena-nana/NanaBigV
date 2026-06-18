@@ -2,10 +2,7 @@
 import { computed } from "vue";
 import StatusBadge from "../components/workbench/StatusBadge.vue";
 import { useWorkbenchStore } from "../features/workbench/store";
-import type {
-  DeliveryQueueStat,
-  InteractionEvent,
-} from "../features/workbench/types";
+import type { InteractionEvent } from "../features/workbench/types";
 import "../styles/page.css";
 import "../styles/workbench.css";
 
@@ -19,11 +16,6 @@ const interactionTypeLabels: Record<InteractionEvent["type"], string> = {
   super_chat: "SC",
   membership: "舰长",
 };
-
-function queueFillWidth(stat: DeliveryQueueStat) {
-  const total = stat.queued + stat.delivered + stat.throttled;
-  return `${Math.max(12, Math.round((stat.delivered / Math.max(total, 1)) * 100))}%`;
-}
 
 function suggestionTone(priority: string) {
   return priority.includes("高") ? "warn" : "info";
@@ -47,31 +39,26 @@ function formatEventText(event: InteractionEvent) {
   <section class="workbench-page workbench-page--fill home-page">
     <div class="home-layout">
       <div class="home-column home-column--sidebar">
-        <div class="card">
-          <h2>功能启停</h2>
+        <div class="card home-sidebar-card">
           <div class="toggle-list">
-            <button
+            <label
               v-for="toggle in view.toggles"
               :key="toggle.key"
-              type="button"
-              role="switch"
               class="toggle-card"
-              :class="{ 'is-enabled': toggle.enabled }"
-              :aria-checked="toggle.enabled"
-              :aria-label="toggle.label"
-              @click="toggleRuntime(toggle.key)"
             >
-              <div class="toggle-card__copy">
-                <span class="toggle-card__title">{{ toggle.label }}</span>
-                <span class="toggle-card__desc">{{ toggle.description }}</span>
-              </div>
-              <span class="toggle-card__state">{{ toggle.enabled ? "开" : "关" }}</span>
-            </button>
+              <span class="toggle-card__title">{{ toggle.label }}</span>
+              <input
+                class="toggle-card__checkbox"
+                type="checkbox"
+                :checked="toggle.enabled"
+                :aria-label="toggle.label"
+                @change="toggleRuntime(toggle.key)"
+              >
+            </label>
           </div>
         </div>
 
-        <div class="card">
-          <h2>AI 建议</h2>
+        <div class="card home-sidebar-card">
           <div class="workbench-list">
             <article
               v-for="suggestion in homeSuggestions"
@@ -82,71 +69,42 @@ function formatEventText(event: InteractionEvent) {
                 <span class="workbench-list-item__title">{{ suggestion.title }}</span>
                 <StatusBadge :label="suggestion.priority" :tone="suggestionTone(suggestion.priority)" />
               </div>
-              <div class="home-suggestion-category">{{ suggestion.category }}</div>
-              <div>{{ suggestion.detail }}</div>
             </article>
           </div>
         </div>
 
-        <div class="card">
-          <h2>输入链路状态</h2>
+        <div class="card home-sidebar-card">
           <div class="workbench-list">
             <article
               v-for="source in view.inputSources"
               :key="source.key"
               class="workbench-list-item"
             >
-              <div class="workbench-list-item__row">
+              <div class="workbench-list-item__row home-source-row">
                 <span class="workbench-list-item__title">{{ source.label }}</span>
-                <StatusBadge :label="source.statusLabel" :tone="source.tone" />
+                <div class="home-source-side">
+                  <span class="workbench-list-item__meta">延迟 {{ source.latencyMs }}ms</span>
+                  <StatusBadge :label="source.statusLabel" :tone="source.tone" />
+                </div>
               </div>
-              <div class="workbench-list-item__meta">{{ source.summary }}</div>
-              <div class="workbench-list-item__meta">延迟 {{ source.latencyMs }}ms</div>
             </article>
           </div>
         </div>
 
-        <div class="card home-queue-card">
-          <div class="workbench-card-head">
-            <h2>投递通道统计</h2>
-            <span class="workbench-list-item__meta">{{ view.liveStatus.nextActionHint }}</span>
-          </div>
-          <div class="workbench-chart-bars">
-            <div
-              v-for="stat in view.queueStats"
-              :key="stat.type"
-              class="workbench-chart-row"
-            >
-              <div class="workbench-chart-label">{{ stat.label }}</div>
-              <div class="workbench-chart-track">
-                <div class="workbench-chart-fill is-ok" :style="{ width: queueFillWidth(stat) }" />
-              </div>
-              <div class="workbench-chart-value">
-                {{ stat.delivered }}/{{ stat.queued + stat.delivered + stat.throttled }}
-              </div>
-            </div>
-          </div>
-          <ul class="workbench-kv danmaku-kv">
-            <li v-for="stat in view.queueStats" :key="`${stat.type}-detail`">
-              <span>{{ stat.label }}</span>
-              <strong>排队 {{ stat.queued }} / 节流 {{ stat.throttled }}</strong>
-            </li>
-          </ul>
-        </div>
-
-        <div class="card">
-          <h2>最近异常</h2>
+        <div class="card home-sidebar-card home-queue-card">
           <div class="workbench-list">
             <article
-              v-for="notice in view.notices"
-              :key="notice.id"
-              class="workbench-list-item"
+              v-for="stat in view.queueStats"
+              :key="stat.type"
+              class="workbench-list-item home-queue-item"
             >
-              <div class="workbench-list-item__row">
-                <span class="workbench-list-item__title">{{ notice.title }}</span>
-                <StatusBadge :label="notice.tone === 'warn' ? '关注' : notice.tone === 'error' ? '异常' : '提示'" :tone="notice.tone" />
+              <div class="workbench-list-item__row home-queue-row">
+                <span class="workbench-list-item__title">{{ stat.label }}</span>
+                <span class="workbench-list-item__meta">投 {{ stat.delivered }}</span>
+                <span class="workbench-list-item__meta">排 {{ stat.queued }}</span>
+                <span class="workbench-list-item__meta">节 {{ stat.throttled }}</span>
+                <span class="workbench-list-item__meta">总 {{ stat.queued + stat.delivered + stat.throttled }}</span>
               </div>
-              <div class="workbench-list-item__meta">{{ notice.detail }}</div>
             </article>
           </div>
         </div>
@@ -265,69 +223,98 @@ function formatEventText(event: InteractionEvent) {
   min-width: 0;
 }
 
-.home-suggestion-category {
-  color: var(--text-muted);
-  font-size: 12px;
+.home-sidebar-card {
+  padding: 12px;
 }
 
-.danmaku-kv {
-  margin-top: 12px;
+.home-sidebar-card :deep(.status-badge) {
+  flex: 0 0 auto;
 }
 
-.home-queue-card .workbench-card-head {
-  align-items: flex-start;
-}
-
-.home-queue-card .workbench-chart-row {
-  grid-template-columns: minmax(60px, 72px) minmax(0, 1fr) 48px;
+.home-sidebar-card .workbench-list {
   gap: 8px;
+}
+
+.home-sidebar-card .workbench-list-item {
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+.home-sidebar-card .workbench-list-item__row {
+  min-width: 0;
+}
+
+.home-sidebar-card .workbench-list-item__title {
+  min-width: 0;
 }
 
 .toggle-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .toggle-card {
   width: 100%;
   height: auto;
-  padding: 12px;
-  border: 1px solid var(--border);
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
   border-radius: var(--radius-md);
   background: var(--bg-subtle);
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   text-align: left;
-}
-
-.toggle-card.is-enabled {
-  border-color: color-mix(in srgb, var(--accent) 26%, var(--border));
-  background: color-mix(in srgb, var(--accent-soft) 70%, var(--bg-subtle));
-}
-
-.toggle-card__copy {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  gap: 12px;
+  cursor: pointer;
 }
 
 .toggle-card__title {
-  font-size: 14px;
+  min-width: 0;
+  flex: 1;
+  font-size: 13px;
   font-weight: 600;
 }
 
-.toggle-card__desc {
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.45;
+.toggle-card__checkbox {
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
-.toggle-card__state {
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 700;
+.home-source-row {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.home-source-side {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+.home-queue-item {
+  padding-block: 8px;
+}
+
+.home-queue-row {
+  justify-content: flex-start;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+}
+
+.home-queue-row .workbench-list-item__title {
+  margin-right: auto;
+}
+
+.home-queue-row .workbench-list-item__meta,
+.home-source-side .workbench-list-item__meta,
+.home-source-side :deep(.status-badge) {
+  white-space: nowrap;
 }
 
 @media (max-width: 980px) {
@@ -358,6 +345,18 @@ function formatEventText(event: InteractionEvent) {
   .home-feed-events {
     overflow: visible;
     padding-right: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .home-source-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .home-source-side {
+    width: 100%;
+    justify-content: space-between;
   }
 }
 </style>
