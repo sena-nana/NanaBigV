@@ -1,48 +1,72 @@
-# 桌面应用模板
+# BigV
 
-一个从 Lilia 当前桌面端外壳提取出的最小 Tauri 2 + Vue 3 + TypeScript 应用模板。
+BigV 是一个面向单机单直播间的本地桌面控制台，用于模拟 AI 观众与主播互动。
 
-模板保留：
+系统以主播语音转文本为主输入，结合 Echo-Live 输入和直播画面识别摘要作为增强上下文，请求 OpenAI 兼容格式的 AI provider，生成贴近真实直播间节奏的观众反应，并通过改造 [xfgryujk/blivechat](https://github.com/xfgryujk/blivechat) 前端呈现弹幕互动效果。
 
-- Lilia 风格的自绘标题栏、可拖拽侧栏、紧凑工作台 UI。
-- 主窗口位置、尺寸与最大化状态恢复，避免启动时先闪默认窗口再跳转。
-- 暗色 / 浅色主题切换与本地持久化。
-- 组件声明式右键菜单、程序化打开菜单、危险项二次确认，并全局屏蔽浏览器原生右键菜单。
-- 通用确认弹层和模板版 `AGENTS.md` 开发规范。
-- 根级 `app.config.json` 统一维护应用名称、产品标题、版本和 Tauri 标识。
-- Yarn 4 单应用包管理与 `verify` 验证脚本。
-- 最小 Tauri Rust 壳和 `ping` invoke 冒烟命令。
+## V1 目标
 
-模板不包含：
+- 围绕一个主播、一个直播间、本地单操作者完成最小闭环。
+- 以主播语音为必需输入，支持 Echo-Live 与视觉上下文作为可选增强。
+- 支持 4 类互动输出：`danmaku`、`gift`、`super_chat`、`membership`。
+- 用结构化长期记忆保存主播设定、历史互动事实、观众画像和场次摘要，持续影响后续生成。
+- 在视觉上呈现“像真实直播间”的互动密度，但实现上明确区分输入、编排、生成、投递 4 个阶段。
 
-- Lilia 的 Claude / Codex / CC-Switch / agent runner 业务。
-- workspace、`packages/contracts`、项目 stub、聊天流、provider 配置。
-- SQLite、WebDAV、托盘、小组件等 Momo 业务能力。
+## 核心能力
 
-## 命令
+- 多源上下文接入：主播语音、Echo-Live 输入、视觉摘要。
+- OpenAI 兼容 provider 适配：模型、参数、连通性与响应解析。
+- 观众模拟：人设池、同接节奏、互动概率、冷热场调度。
+- 结构化长期记忆：主播设定、长期事实、观众画像、场次摘要。
+- 前端互动投递：基于 blivechat 改造的弹幕、礼物、SC、舰长渲染。
+
+## 非目标
+
+- 多直播间并发管理。
+- 云端编排、多租户或团队协作后台。
+- 真实平台运营后台、账号体系或平台级权限管理。
+- 房管、抽奖、活动脚本、运营战役编排等复杂活动系统。
+- 首版即重度插件化或厂商私有协议适配。
+
+## 当前仓库状态
+
+当前仓库仍保留 Tauri + Vue 初始桌面壳实现，本轮文档先固定 BigV 的产品边界、架构分层和开发路线，不包含业务实现切换。
+
+## 文档
+
+- [架构文档](./docs/architecture.md)
+- [开发 TODO](./docs/todo.md)
+- [开发启动](./docs/guide/development.md)
+- [Agent 协作规范](./AGENTS.md)
+- [视觉设计标准](./DESIGN.md)
+
+## 上游项目致谢
+
+### Echo-Live
+
+- 致谢：[sheep-realms/Echo-Live](https://github.com/sheep-realms/Echo-Live) 是一个基于 Echo 的、面向无声系虚拟主播直播的仿视觉小说对话框 OBS 插件；BigV 将其视为可选增强输入源，而不是内置替代物。
+- 许可说明：Echo-Live 仓库当前标注为 GPL-3.0，实际接入或二次分发时需要单独遵循其上游许可与文档约束。
+
+### blivechat
+
+- 致谢：[xfgryujk/blivechat](https://github.com/xfgryujk/blivechat) 提供了用于 OBS 的 B 站直播评论栏与前端渲染思路，BigV 的互动展示层基于其前端效果和事件呈现方向进行改造。
+- 许可说明：blivechat 仓库当前标注为 MIT，BigV 在引用或改造相关实现时应保留必要的上游归属与许可信息。
+
+## 本地命令
 
 ```bash
+corepack enable
 yarn install
 yarn dev
 yarn tauri:dev
+yarn docs:dev
+yarn docs:build
+```
+
+如需完整验证，可执行：
+
+```bash
 yarn verify
 ```
 
-`yarn verify` 会串行运行前端测试、前端构建和 Tauri Rust 编译检查。
-
-## 应用信息
-
-修改根目录的 `app.config.json` 后运行 `yarn sync:app-config`，会同步更新前端展示、`package.json`、`src-tauri/tauri.conf.json` 和 `src-tauri/Cargo.toml`。
-
-## 版本提升（本地）
-
-本地发布前可先执行：
-
-```bash
-yarn version:bump patch
-yarn version:bump minor
-yarn version:bump major
-yarn version:bump 1.2.3
-```
-
-`version:bump` 会先校验版本号合法性，更新 `app.config.json` 中的版本，再同步到 `package.json`、`src-tauri/tauri.conf.json` 和 `src-tauri/Cargo.toml`，便于后续 `git commit` 与 `workflow` 打 tag 发布。
+`yarn verify` 会串行运行前端测试、前端构建和 Tauri Rust 编译检查。当前业务代码仍是初始壳骨架，验证主要用于保证文档与工程骨架没有被破坏。
