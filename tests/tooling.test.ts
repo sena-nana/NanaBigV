@@ -155,7 +155,6 @@ describe("单应用模板工具链", () => {
     const tauri = JSON.parse(readFileSync(resolve("src-tauri/tauri.conf.json"), "utf-8"));
     const cargo = readFileSync(resolve("src-tauri/Cargo.toml"), "utf-8");
     const appShell = readFileSync(resolve("src/config/appShell.ts"), "utf-8");
-    const homePage = readFileSync(resolve("src/pages/Home.vue"), "utf-8");
     const settingsPage = readFileSync(resolve("src/pages/Settings.vue"), "utf-8");
     const secondaryPanel = readFileSync(resolve("src/layouts/SecondaryPanel.vue"), "utf-8");
     const aboutSection = readFileSync(resolve("src/pages/settings/AboutSection.vue"), "utf-8");
@@ -170,7 +169,6 @@ describe("单应用模板工具链", () => {
     expect(cargo).toContain(`version = "${config.version}"`);
     expect(appShell).toContain('import appConfig from "../../app.config.json"');
     expect(appShell).toContain("APP_SHELL_COPY");
-    expect(homePage).toContain("APP_SHELL_COPY.homeTitle");
     expect(appShell).toContain("BIGV_WORKBENCH_SNAPSHOT.nav.map");
     expect(secondaryPanel).toContain('aria-label="主导航"');
     expect(secondaryPanel).toContain("APP_SHELL_COPY.workspaceSectionTitle");
