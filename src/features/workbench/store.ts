@@ -15,6 +15,9 @@ import {
 import {
   createLocalBlivechatQueue,
   type BlivechatEventInput,
+  type BlivechatQueueRecord,
+  type BlivechatQueueSnapshot,
+  type BlivechatQueuedEvent,
 } from "./eventRuntime";
 import {
   createInitialMockSourceStatus,
@@ -25,10 +28,13 @@ import { BIGV_WORKBENCH_SNAPSHOT } from "./mockSnapshot";
 import type { ContextWindowSnapshot } from "../context/types";
 import type { MemoryStoreSnapshot } from "../memory/types";
 import type {
+  BlivechatRenderChannel,
+  BlivechatRenderItem,
   BigVWorkbenchSnapshot,
   DanmakuViewModel,
   InputSourceStatus,
   InteractionEvent,
+  InteractionType,
   MockSourceRecord,
   RuntimeNotice,
   RuntimeToggleState,
@@ -100,6 +106,21 @@ const baselineInteractionSeed: BlivechatEventInput[] = [
     content: "触发舰长入场欢迎，等待本地投递队列放行。",
   },
 ];
+
+const BLIVECHAT_CHANNEL_LABELS: Record<InteractionType, string> = {
+  danmaku: "弹幕",
+  gift: "礼物",
+  super_chat: "SC",
+  membership: "舰长",
+};
+
+const BLIVECHAT_CHANNEL_TYPES = Object.keys(BLIVECHAT_CHANNEL_LABELS) as InteractionType[];
+
+const BLIVECHAT_RENDER_ACTION_META = {
+  enqueue: { label: "排队中", tone: "info" },
+  deliver: { label: "已投递", tone: "ok" },
+  throttle: { label: "被节流", tone: "warn" },
+} satisfies Record<BlivechatRenderItem["action"], { label: string; tone: BlivechatRenderItem["tone"] }>;
 
 function cloneSnapshot<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -247,6 +268,63 @@ function deriveContextSources(window: ContextWindowSnapshot): InputSourceStatus[
   }));
 }
 
+function deriveBlivechatChannels(queueSnapshot: BlivechatQueueSnapshot): BlivechatRenderChannel[] {
+  const items = [
+    ...queueSnapshot.records
+      .filter((record) => record.action !== "enqueue")
+      .map(recordToBlivechatRenderItem),
+    ...queueSnapshot.pending.map(pendingToBlivechatRenderItem),
+  ];
+
+  return BLIVECHAT_CHANNEL_TYPES.map((type) => ({
+    type,
+    label: BLIVECHAT_CHANNEL_LABELS[type],
+    items: items.filter((item) => item.type === type),
+  }));
+}
+
+function recordToBlivechatRenderItem(record: BlivechatQueueRecord): BlivechatRenderItem {
+  const action = BLIVECHAT_RENDER_ACTION_META[record.action];
+  return {
+    id: record.id,
+    eventId: record.eventId,
+    action: record.action,
+    type: record.type,
+    audienceName: record.event.audienceName,
+    content: record.event.content,
+    amountLabel: record.event.amountLabel,
+    statusLabel: action.label,
+    tone: action.tone,
+    happenedAt: formatQueueTime(record.happenedAt),
+    reasonLabel: record.reason,
+  };
+}
+
+function pendingToBlivechatRenderItem(event: BlivechatQueuedEvent): BlivechatRenderItem {
+  const action = BLIVECHAT_RENDER_ACTION_META.enqueue;
+  return {
+    id: `${event.id}-pending`,
+    eventId: event.id,
+    action: "enqueue",
+    type: event.type,
+    audienceName: event.audienceName,
+    content: event.content,
+    amountLabel: event.amountLabel,
+    statusLabel: action.label,
+    tone: action.tone,
+    happenedAt: formatQueueTime(event.createdAt),
+  };
+}
+
+function formatQueueTime(value: number) {
+  return new Date(value).toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
 function deriveDanmakuView(snapshot: BigVWorkbenchSnapshot): DanmakuViewModel {
   const baseView = snapshot.danmaku;
   const toggles = baseView.toggles;
@@ -287,6 +365,7 @@ function deriveDanmakuView(snapshot: BigVWorkbenchSnapshot): DanmakuViewModel {
     contextWindowSeconds: contextWindow.value.windowSeconds,
     queueStats: queueSnapshot.stats,
     recentEvents: queueSnapshot.recentEvents,
+    blivechatChannels: deriveBlivechatChannels(queueSnapshot),
     mockSource: mockSourceStatus.value,
     mockSourceRecords: mockSourceRecords.value,
     notices: deriveNotices(baseView),

@@ -135,6 +135,7 @@ export const BIGV_WORKBENCH_SNAPSHOT: BigVWorkbenchSnapshot = {
         happenedAt: "20:39:49",
       },
     ],
+    blivechatChannels: [],
     mockSource: {
       state: "idle",
       scenarioLabel: "本地直播循环",

@@ -65,6 +65,28 @@ export interface DeliveryQueueStat {
   throttled: number;
 }
 
+export type BlivechatRenderAction = "enqueue" | "deliver" | "throttle";
+
+export interface BlivechatRenderItem {
+  id: string;
+  eventId: string;
+  action: BlivechatRenderAction;
+  type: InteractionType;
+  audienceName: string;
+  content: string;
+  amountLabel?: string;
+  statusLabel: string;
+  tone: StatusTone;
+  happenedAt: string;
+  reasonLabel?: string;
+}
+
+export interface BlivechatRenderChannel {
+  type: InteractionType;
+  label: string;
+  items: BlivechatRenderItem[];
+}
+
 export interface RuntimeNotice {
   id: string;
   title: string;
@@ -101,6 +123,7 @@ export interface DanmakuViewModel {
   toggles: RuntimeToggleState[];
   queueStats: DeliveryQueueStat[];
   recentEvents: InteractionEvent[];
+  blivechatChannels: BlivechatRenderChannel[];
   mockSource: MockSourceStatus;
   mockSourceRecords: MockSourceRecord[];
   notices: RuntimeNotice[];

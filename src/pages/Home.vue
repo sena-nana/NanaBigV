@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { Send, Trash2 } from "@lucide/vue";
+import BlivechatOutputChannels from "../components/workbench/BlivechatOutputChannels.vue";
 import StatusBadge from "../components/workbench/StatusBadge.vue";
 import ToggleSwitch from "../components/ToggleSwitch.vue";
 import { useProviderSettings } from "../composables/useProviderSettings";
 import { useWorkbenchStore } from "../features/workbench/store";
 import type { ContextEvent, ContextSourceKind } from "../features/context/types";
 import type { InputSourceStatus } from "../features/workbench/types";
-import type { InteractionEvent } from "../features/workbench/types";
 import "../styles/page.css";
 import "../styles/workbench.css";
 
@@ -38,13 +38,6 @@ const mockSourceStateMeta = computed(() => {
 });
 const mockSourceLastEvent = computed(() => view.value.mockSource.lastEventLabel ?? "Mock 数据源未启用，请到设置开启 Debug");
 
-const interactionTypeLabels: Record<InteractionEvent["type"], string> = {
-  danmaku: "弹幕",
-  gift: "礼物",
-  super_chat: "SC",
-  membership: "舰长",
-};
-
 const contextSourceLabels: Record<ContextSourceKind, string> = {
   voice: "主播语音",
   echo_live: "Echo-Live",
@@ -57,19 +50,6 @@ onMounted(() => {
 
 function suggestionTone(priority: string) {
   return priority.includes("高") ? "warn" : "info";
-}
-
-function formatEventText(event: InteractionEvent) {
-  switch (event.type) {
-    case "danmaku":
-      return `${event.audienceName}：${event.content}`;
-    case "super_chat":
-      return `${event.audienceName}${event.amountLabel ? ` [SC ${event.amountLabel}]` : " [SC]"}：${event.content}`;
-    case "gift":
-      return `${event.audienceName} ${event.content}${event.amountLabel ? ` (${event.amountLabel})` : ""}`;
-    default:
-      return `${event.audienceName} ${event.content}`;
-  }
 }
 
 function formatSourceLatency(source: InputSourceStatus) {
@@ -277,20 +257,7 @@ async function clearContextEvents() {
               </div>
             </div>
 
-            <div class="home-feed-events">
-              <div class="home-feed-stream">
-                <div
-                  v-for="event in view.recentEvents"
-                  :key="event.id"
-                  class="home-feed-event"
-                >
-                  <span class="home-feed-event__type">{{ interactionTypeLabels[event.type] }}</span>
-                  <span class="home-feed-event__text">{{ formatEventText(event) }}</span>
-                  <span class="home-feed-event__time">{{ event.happenedAt }}</span>
-                  <StatusBadge :label="event.statusLabel" :tone="event.tone" />
-                </div>
-              </div>
-            </div>
+            <BlivechatOutputChannels :channels="view.blivechatChannels" />
           </section>
         </div>
       </div>
@@ -344,13 +311,6 @@ async function clearContextEvents() {
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.6;
-}
-
-.home-feed-events {
-  min-height: 0;
-  overflow: auto;
-  padding-right: 4px;
-  display: flex;
 }
 
 .home-context-panel,
@@ -516,6 +476,10 @@ async function clearContextEvents() {
   overflow: hidden;
 }
 
+.home-output-panel :deep(.blivechat-channels) {
+  flex: 1;
+}
+
 .home-mock-source {
   display: flex;
   align-items: flex-start;
@@ -575,52 +539,6 @@ async function clearContextEvents() {
 }
 
 .home-mock-record :deep(.status-badge) {
-  flex: 0 0 auto;
-}
-
-.home-feed-stream {
-  min-height: 100%;
-  width: 100%;
-  display: flex;
-  flex-direction: column-reverse;
-  justify-content: flex-start;
-  gap: 8px;
-}
-
-.home-feed-event {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-.home-feed-event__type {
-  color: var(--text-dim);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
-}
-
-.home-feed-event__text {
-  font-size: 14px;
-  line-height: 1.5;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-  min-width: 0;
-}
-
-.home-feed-event__time {
-  color: var(--text-dim);
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.home-feed-event :deep(.status-badge) {
   flex: 0 0 auto;
 }
 
@@ -741,11 +659,6 @@ async function clearContextEvents() {
   .home-feed-shell {
     height: auto;
     grid-template-rows: auto;
-  }
-
-  .home-feed-events {
-    overflow: visible;
-    padding-right: 0;
   }
 
   .home-mock-source {

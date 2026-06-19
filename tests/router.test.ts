@@ -211,8 +211,22 @@ describe("基础路由", () => {
 
     expect(await screen.findByLabelText("自动投递")).toBeInTheDocument();
     expect(screen.getByText("把调试段落拆成“目标 -> 过程 -> 结论”三段")).toBeInTheDocument();
-    expect(screen.getByText("阿黎：这一段反应好快，像是真的在跟弹幕对线。")).toBeInTheDocument();
-    expect(screen.getByText("糖霜六号 [SC ¥30]：建议下一段切回剧情点评，不要一直卡在设置界面。")).toBeInTheDocument();
+    const danmakuChannel = await screen.findByRole("region", { name: "blivechat 弹幕通道" });
+    const giftChannel = screen.getByRole("region", { name: "blivechat 礼物通道" });
+    const superChatChannel = screen.getByRole("region", { name: "blivechat SC通道" });
+    const membershipChannel = screen.getByRole("region", { name: "blivechat 舰长通道" });
+    expect(danmakuChannel).toHaveTextContent("阿黎：这一段反应好快，像是真的在跟弹幕对线。");
+    expect(giftChannel).toHaveTextContent("北街舟");
+    expect(giftChannel).toHaveTextContent("送出荧光棒 x2，配合主播刚提到的新梗。 · ¥20");
+    expect(superChatChannel).toHaveTextContent("糖霜六号");
+    expect(superChatChannel).toHaveTextContent("¥30");
+    expect(superChatChannel).toHaveTextContent("建议下一段切回剧情点评，不要一直卡在设置界面。");
+    expect(superChatChannel).toHaveTextContent("通道关闭或自动投递暂停");
+    expect(membershipChannel).toHaveTextContent("镜岛");
+    expect(membershipChannel).toHaveTextContent("排队中");
+    expect(
+      screen.queryByText("糖霜六号 [SC ¥30]：建议下一段切回剧情点评，不要一直卡在设置界面。"),
+    ).not.toBeInTheDocument();
     expect((await screen.findAllByText("Provider")).length).toBeGreaterThan(0);
     expect(await screen.findByRole("link", { name: /Provider 待测试/ })).toHaveClass("sb-conn--warn");
     expect(screen.getAllByText("待测试")).not.toHaveLength(0);
@@ -329,6 +343,7 @@ describe("基础路由", () => {
     await fireEvent.click(toggle);
     expect(toggle).not.toBeChecked();
     expect(screen.getByText("自动投递已关闭，新的互动结果不会继续进入渲染队列。")).toBeInTheDocument();
+    expect(screen.getAllByText("通道关闭或自动投递暂停").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /Provider 待测试/ })).toHaveClass("sb-conn--warn");
     expect(screen.getAllByText("待测试").length).toBeGreaterThan(0);
     expect(localStorage.getItem("bigv.workbench")).toContain("\"key\":\"dispatch\"");
