@@ -6,6 +6,10 @@ import {
   loadContextWindow,
   submitContextEvent,
 } from "../context/api";
+import {
+  createLocalBlivechatQueue,
+  type BlivechatEventInput,
+} from "./eventRuntime";
 import { BIGV_WORKBENCH_SNAPSHOT } from "./mockSnapshot";
 import type { ContextWindowSnapshot } from "../context/types";
 import type {
@@ -54,6 +58,30 @@ const EMPTY_CONTEXT_WINDOW: ContextWindowSnapshot = {
 const contextWindow = ref<ContextWindowSnapshot>(structuredClone(EMPTY_CONTEXT_WINDOW));
 const contextLoading = ref(false);
 const contextError = ref<string | null>(null);
+const localInteractionSeed: BlivechatEventInput[] = [
+  {
+    type: "danmaku",
+    audienceName: "阿黎",
+    content: "这一段反应好快，像是真的在跟弹幕对线。",
+  },
+  {
+    type: "gift",
+    audienceName: "北街舟",
+    content: "送出荧光棒 x2，配合主播刚提到的新梗。",
+    amountLabel: "¥20",
+  },
+  {
+    type: "super_chat",
+    audienceName: "糖霜六号",
+    content: "建议下一段切回剧情点评，不要一直卡在设置界面。",
+    amountLabel: "¥30",
+  },
+  {
+    type: "membership",
+    audienceName: "镜岛",
+    content: "触发舰长入场欢迎，等待本地投递队列放行。",
+  },
+];
 
 function cloneSnapshot<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -203,6 +231,7 @@ function deriveDanmakuView(snapshot: BigVWorkbenchSnapshot): DanmakuViewModel {
   const toggles = baseView.toggles;
   const dispatchEnabled = findToggle(toggles, "dispatch")?.enabled !== false;
   const providerSummary = providerStatusSummary.value;
+  const queueSnapshot = localEventQueueSnapshot.value;
 
   const liveStatus = dispatchEnabled
     ? {
@@ -229,27 +258,25 @@ function deriveDanmakuView(snapshot: BigVWorkbenchSnapshot): DanmakuViewModel {
   };
   const inputSources = [...deriveContextSources(contextWindow.value), providerSource];
 
-  const queueStats = baseView.queueStats.map((stat) => {
-    if (!isChannelDisabled(stat.type, toggles)) return stat;
-    return {
-      ...stat,
-      queued: 0,
-      throttled: stat.throttled + stat.queued,
-    };
-  });
-
   return {
     ...baseView,
     liveStatus,
     inputSources,
     contextEvents: contextWindow.value.events,
     contextWindowSeconds: contextWindow.value.windowSeconds,
-    queueStats,
+    queueStats: queueSnapshot.stats,
+    recentEvents: queueSnapshot.recentEvents,
     notices: deriveNotices(baseView),
   };
 }
 
 const snapshot = ref<BigVWorkbenchSnapshot>(loadInitialSnapshot());
+const localEventQueue = createLocalBlivechatQueue();
+const localEventQueueSnapshot = ref(localEventQueue.snapshot());
+localEventQueue.onSnapshot((next) => {
+  localEventQueueSnapshot.value = next;
+});
+seedLocalEventQueue(snapshot.value.danmaku.toggles);
 
 function replaceSnapshot(next: BigVWorkbenchSnapshot) {
   snapshot.value = next;
@@ -267,6 +294,28 @@ function toggleRuntime(key: string) {
     toggle.key === key ? { ...toggle, enabled: !toggle.enabled } : toggle,
   );
   replaceSnapshot(next);
+  applyQueueToggles(next.danmaku.toggles);
+}
+
+function seedLocalEventQueue(toggles: RuntimeToggleState[]) {
+  const startedAt = Date.now() - 24_000;
+  for (const [index, event] of localInteractionSeed.entries()) {
+    localEventQueue.enqueue(event, startedAt + index * 4_000);
+    if (index < 3) {
+      localEventQueue.deliverNext(
+        (queuedEvent) => !isChannelDisabled(queuedEvent.type, toggles),
+        startedAt + index * 4_000 + 1_200,
+      );
+    }
+  }
+  applyQueueToggles(toggles);
+}
+
+function applyQueueToggles(toggles: RuntimeToggleState[]) {
+  localEventQueue.throttlePending(
+    (event) => isChannelDisabled(event.type, toggles),
+    "通道关闭或自动投递暂停",
+  );
 }
 
 async function refreshContextWindow() {
