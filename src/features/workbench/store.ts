@@ -7,6 +7,11 @@ import {
   loadContextWindow,
   submitContextEvent,
 } from "../context/api";
+import { loadMemorySnapshot } from "../memory/api";
+import {
+  deriveAudienceViewFromMemory,
+  deriveReviewViewFromMemory,
+} from "../memory/viewModels";
 import {
   createLocalBlivechatQueue,
   type BlivechatEventInput,
@@ -18,6 +23,7 @@ import {
 } from "./mockDataSource";
 import { BIGV_WORKBENCH_SNAPSHOT } from "./mockSnapshot";
 import type { ContextWindowSnapshot } from "../context/types";
+import type { MemoryStoreSnapshot } from "../memory/types";
 import type {
   BigVWorkbenchSnapshot,
   DanmakuViewModel,
@@ -65,6 +71,9 @@ const EMPTY_CONTEXT_WINDOW: ContextWindowSnapshot = {
 const contextWindow = ref<ContextWindowSnapshot>(structuredClone(EMPTY_CONTEXT_WINDOW));
 const contextLoading = ref(false);
 const contextError = ref<string | null>(null);
+const memorySnapshot = ref<MemoryStoreSnapshot | null>(null);
+const memoryLoading = ref(false);
+const memoryError = ref<string | null>(null);
 const mockSourceStatus = ref(createInitialMockSourceStatus());
 const mockSourceRecords = ref<MockSourceRecord[]>([]);
 const baselineInteractionSeed: BlivechatEventInput[] = [
@@ -214,6 +223,14 @@ function deriveNotices(view: DanmakuViewModel): RuntimeNotice[] {
       tone: "error",
     });
   }
+  if (memoryError.value) {
+    notices.unshift({
+      id: "runtime-memory-error",
+      title: "记忆层异常",
+      detail: memoryError.value,
+      tone: "error",
+    });
+  }
   return notices;
 }
 
@@ -318,8 +335,10 @@ function replaceSnapshot(next: BigVWorkbenchSnapshot) {
 
 const danmakuView = computed(() => deriveDanmakuView(snapshot.value));
 const quotaView = computed(() => snapshot.value.quota);
-const audienceView = computed(() => snapshot.value.audience);
-const reviewView = computed(() => snapshot.value.review);
+const audienceView = computed(() => deriveAudienceViewFromMemory(memorySnapshot.value));
+const reviewView = computed(() => deriveReviewViewFromMemory(memorySnapshot.value));
+
+void refreshMemorySnapshot();
 
 function toggleRuntime(key: string) {
   const next = cloneSnapshot(snapshot.value);
@@ -364,6 +383,20 @@ async function refreshContextWindow() {
   }
 }
 
+async function refreshMemorySnapshot(): Promise<boolean> {
+  memoryLoading.value = true;
+  memoryError.value = null;
+  try {
+    memorySnapshot.value = await loadMemorySnapshot();
+    return true;
+  } catch (error) {
+    memoryError.value = `读取记忆快照失败：${toErrorMessage(error)}`;
+    return false;
+  } finally {
+    memoryLoading.value = false;
+  }
+}
+
 async function submitVoiceContext(content: string): Promise<boolean> {
   contextLoading.value = true;
   contextError.value = null;
@@ -401,7 +434,11 @@ export function useWorkbenchStore() {
     reviewView,
     contextLoading,
     contextError,
+    memorySnapshot,
+    memoryLoading,
+    memoryError,
     refreshContextWindow,
+    refreshMemorySnapshot,
     submitVoiceContext,
     clearWorkbenchContextWindow,
     toggleRuntime,
