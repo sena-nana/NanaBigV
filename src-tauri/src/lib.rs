@@ -1,8 +1,10 @@
+use std::sync::Mutex;
 use tauri::{utils::config::Color, Manager, WindowEvent};
 
 const MAIN_WINDOW_LABEL: &str = "main";
 const BG: Color = Color(0x18, 0x18, 0x18, 0xFF);
 
+mod context;
 mod provider;
 mod window_state;
 
@@ -14,6 +16,7 @@ fn ping() -> &'static str {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(Mutex::new(context::ContextWindowState::default()))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
@@ -41,6 +44,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             ping,
+            context::submit_context_event,
+            context::load_context_window,
+            context::clear_context_window,
             provider::load_provider_config,
             provider::save_provider_config,
             provider::test_provider_connection

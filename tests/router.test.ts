@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/vue";
+import { fireEvent, render, screen, waitFor } from "@testing-library/vue";
 import { createMemoryHistory } from "vue-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App.vue";
@@ -30,6 +30,68 @@ vi.mock("@tauri-apps/api/core", () => ({
     mockInvoke(command, payload),
 }));
 
+const emptyContextWindow = {
+  windowStartedAt: 1_800_000_000_000,
+  windowSeconds: 300,
+  events: [],
+  sourceStatuses: [
+    {
+      source: "voice",
+      label: "主播语音",
+      statusLabel: "待输入",
+      tone: "info",
+      summary: "等待本地 ASR 或手动面板提交主播语音文本。",
+      eventCount: 0,
+    },
+    {
+      source: "echo_live",
+      label: "Echo-Live",
+      statusLabel: "预留接口",
+      tone: "info",
+      summary: "Echo-Live 输入适配器已预留，阶段 3 不接入真实事件。",
+      eventCount: 0,
+    },
+    {
+      source: "vision",
+      label: "视觉上下文",
+      statusLabel: "预留接口",
+      tone: "info",
+      summary: "视觉摘要输入接口已预留，阶段 3 不处理原始视频流。",
+      eventCount: 0,
+    },
+  ],
+};
+
+function voiceContextWindow(content: string) {
+  return {
+    ...emptyContextWindow,
+    events: [
+      {
+        id: "ctx-test-1",
+        source: "voice",
+        content,
+        summary: content,
+        occurredAt: 1_800_000_001_000,
+        receivedAt: 1_800_000_001_000,
+        status: "accepted",
+      },
+    ],
+    sourceStatuses: [
+      {
+        source: "voice",
+        label: "主播语音",
+        statusLabel: "在线",
+        tone: "ok",
+        summary: "最近 60 秒内收到主播语音文本，当前窗口有 1 条输入。",
+        lastEventAt: 1_800_000_001_000,
+        eventCount: 1,
+      },
+      emptyContextWindow.sourceStatuses[1],
+      emptyContextWindow.sourceStatuses[2],
+    ],
+  };
+}
+
 function successProbe(): ProviderProbeResult {
   return {
     ok: true,
@@ -60,6 +122,12 @@ function installInvokeMock(overrides: Partial<Record<string, unknown>> = {}) {
     if (command === "load_provider_config") return loadedProviderConfig;
     if (command === "save_provider_config") return payload?.config ?? loadedProviderConfig;
     if (command === "test_provider_connection") return successProbe();
+    if (command === "load_context_window") return emptyContextWindow;
+    if (command === "submit_context_event") {
+      const event = payload?.event as { content?: string } | undefined;
+      return voiceContextWindow(event?.content ?? "");
+    }
+    if (command === "clear_context_window") return emptyContextWindow;
     throw new Error(`unexpected command: ${command}`);
   });
 }
@@ -214,6 +282,60 @@ describe("基础路由", () => {
     expect(screen.getAllByText("待测试").length).toBeGreaterThan(0);
     expect(localStorage.getItem("bigv.workbench")).toContain("\"key\":\"dispatch\"");
     expect(localStorage.getItem("bigv.workbench")).toContain("\"enabled\":false");
+  });
+
+  it("弹幕姬页可提交主播语音文本并刷新上下文窗口", async () => {
+    await renderAt("/danmaku");
+
+    const input = await screen.findByRole("textbox", { name: "主播语音文本" });
+    await fireEvent.update(input, "主播刚说下一局换成高难模式");
+    await fireEvent.click(screen.getByRole("button", { name: "提交语音" }));
+
+    expect(mockInvoke).toHaveBeenCalledWith("submit_context_event", {
+      event: {
+        source: "voice",
+        content: "主播刚说下一局换成高难模式",
+      },
+    });
+    expect((await screen.findAllByText("主播刚说下一局换成高难模式")).length).toBeGreaterThan(0);
+    expect(screen.getByText("在线")).toBeInTheDocument();
+    expect(input).toHaveValue("");
+  });
+
+  it("弹幕姬页可清空上下文窗口回到待输入状态", async () => {
+    await renderAt("/danmaku");
+
+    await fireEvent.update(
+      await screen.findByRole("textbox", { name: "主播语音文本" }),
+      "主播提到马上进 boss",
+    );
+    await fireEvent.click(screen.getByRole("button", { name: "提交语音" }));
+    expect((await screen.findAllByText("主播提到马上进 boss")).length).toBeGreaterThan(0);
+
+    await fireEvent.click(screen.getByRole("button", { name: "清空窗口" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("主播提到马上进 boss")).not.toBeInTheDocument();
+    });
+    expect(screen.getAllByText("等待主播语音文本输入。").length).toBeGreaterThan(0);
+    expect(mockInvoke).toHaveBeenCalledWith("clear_context_window", undefined);
+  });
+
+  it("主播语音提交失败时展示错误且保留草稿", async () => {
+    installInvokeMock({
+      submit_context_event: new Error("local ASR bridge unavailable"),
+    });
+    await renderAt("/danmaku");
+
+    const input = await screen.findByRole("textbox", { name: "主播语音文本" });
+    await fireEvent.update(input, "这条不要丢");
+    await fireEvent.click(screen.getByRole("button", { name: "提交语音" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "提交主播语音失败：local ASR bridge unavailable",
+    );
+    expect(input).toHaveValue("这条不要丢");
+    expect(screen.getAllByText("等待主播语音文本输入。").length).toBeGreaterThan(0);
   });
 
   it("额度检查页支持切换时间窗", async () => {

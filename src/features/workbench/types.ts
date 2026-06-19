@@ -1,3 +1,5 @@
+import type { ContextEvent, ContextSourceKind } from "../context/types";
+
 export type WorkbenchNavKey = "danmaku" | "quota" | "audience" | "review";
 export type InteractionType = "danmaku" | "gift" | "super_chat" | "membership";
 export type StatusTone = "ok" | "warn" | "error" | "info";
@@ -30,6 +32,9 @@ export interface InputSourceStatus {
   statusLabel: string;
   tone: StatusTone;
   summary: string;
+  source?: ContextSourceKind;
+  lastEventAt?: number;
+  eventCount?: number;
   latencyMs?: number;
   latencyLabel?: string;
 }
@@ -70,6 +75,8 @@ export interface RuntimeNotice {
 export interface DanmakuViewModel {
   liveStatus: LiveRoomStatus;
   inputSources: InputSourceStatus[];
+  contextEvents: ContextEvent[];
+  contextWindowSeconds: number;
   toggles: RuntimeToggleState[];
   queueStats: DeliveryQueueStat[];
   recentEvents: InteractionEvent[];
