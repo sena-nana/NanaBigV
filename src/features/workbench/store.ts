@@ -1,6 +1,7 @@
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import appConfig from "../../../app.config.json";
 import { useProviderStatusSummary } from "../../composables/useProviderSettings";
+import { useWorkbenchDebugSettings } from "../../composables/useWorkbenchDebug";
 import {
   clearContextWindow,
   loadContextWindow,
@@ -297,6 +298,19 @@ const mockDataSource = new WorkbenchMockDataSource({
   },
 });
 
+const { mockDataSourceEnabled } = useWorkbenchDebugSettings();
+watch(
+  mockDataSourceEnabled,
+  (enabled) => {
+    if (enabled) {
+      mockDataSource.start();
+    } else {
+      mockDataSource.pause();
+    }
+  },
+  { immediate: true },
+);
+
 function replaceSnapshot(next: BigVWorkbenchSnapshot) {
   snapshot.value = next;
   persistSnapshot(next);
@@ -391,9 +405,5 @@ export function useWorkbenchStore() {
     submitVoiceContext,
     clearWorkbenchContextWindow,
     toggleRuntime,
-    startMockSource: () => mockDataSource.start(),
-    pauseMockSource: () => mockDataSource.pause(),
-    stepMockSource: () => mockDataSource.step(),
-    resetMockSource: () => mockDataSource.reset(),
   };
 }

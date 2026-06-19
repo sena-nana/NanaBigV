@@ -169,23 +169,9 @@ export class WorkbenchMockDataSource {
   }
 
   pause() {
+    if (this.timer === null && this.status.state === "idle") return;
     this.clearTimer();
     this.status = { ...this.status, state: "paused" };
-    this.notify();
-  }
-
-  async step() {
-    await this.runNextFrame();
-  }
-
-  reset() {
-    this.clearTimer();
-    this.options.queue.reset();
-    this.frameIndex = 0;
-    this.nextRecordSeq = 0;
-    this.contextInFlight = false;
-    this.records = [];
-    this.status = createInitialMockSourceStatus();
     this.notify();
   }
 
