@@ -11,9 +11,6 @@ const loadedProviderConfig = {
   baseUrl: "https://example.com/v1",
   apiKey: "sk-app-shell-test",
   model: "gpt-4.1-mini",
-  temperature: 0.6,
-  topP: 0.9,
-  timeoutSeconds: 45,
 };
 
 const mockInvoke = vi.hoisted(() =>
@@ -121,12 +118,18 @@ beforeEach(() => {
   mockInvoke.mockImplementation(async (command, payload) => {
     if (command === "load_provider_config") return loadedProviderConfig;
     if (command === "save_provider_config") return payload?.config ?? loadedProviderConfig;
+    if (command === "list_provider_models") {
+      return {
+        ok: true,
+        models: ["gpt-4.1", loadedProviderConfig.model],
+      };
+    }
     if (command === "test_provider_connection") {
       return {
         ok: true,
         latencyMs: 182,
         model: loadedProviderConfig.model,
-        message: "已通过 chat/completions 连通性测试",
+        message: "Provider 连通性测试通过",
       };
     }
     throw new Error(`unexpected command: ${command}`);

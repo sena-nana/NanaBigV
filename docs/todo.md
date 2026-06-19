@@ -20,15 +20,15 @@
 
 目标：建立 OpenAI 兼容 provider 的最小可用接入。
 
-- 定义 provider 配置项：Base URL、API Key、模型名、采样参数、超时。
+- 定义 provider 配置项：Base URL、API Key、远端模型选择。
 - 实现连通性测试和错误回显。
 - 固定 `ProviderClient` 的统一输入输出与错误模型。
 - 明确结构化输出约束的承载方式。
-- Provider 配置由本地 Rust store 托管，阶段 2 连通性测试固定走 `chat/completions + jsonObject`。
+- 模型名必须从 OpenAI 兼容模型列表获取后选择。
 
 完成判定：
 
-- 能从本地配置发起一次 OpenAI 兼容请求并看到明确结果或错误。
+- 能获取远端模型列表，选择模型，并发起一次 OpenAI 兼容请求看到明确结果或错误。
 - 上层模块无需关心具体厂商差异。
 
 ## 阶段 3：输入接入

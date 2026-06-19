@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Download } from "@lucide/vue";
 import { computed } from "vue";
 import { useProviderSettings } from "../../composables/useProviderSettings";
 
@@ -12,14 +13,13 @@ const probeResultTone = computed(() => {
 
 <template>
   <div class="card">
-    <h2>Provider</h2>
-    <div class="provider-intro">
-      <p>Provider 配置由本地 Rust store 托管，连通性测试走 OpenAI 兼容 `chat/completions`。</p>
-      <p class="muted">{{ settings.statusText.value }}</p>
-    </div>
+    <h2>模型配置</h2>
 
     <div v-if="settings.loadError.value" class="provider-banner provider-banner--error" role="alert">
       读取本地配置失败：{{ settings.loadError.value }}
+    </div>
+    <div v-if="settings.saveError.value" class="provider-banner provider-banner--error" role="alert">
+      本地保存失败：{{ settings.saveError.value }}
     </div>
 
     <div class="settings-row">
@@ -43,7 +43,7 @@ const probeResultTone = computed(() => {
     <div class="settings-row">
       <label class="settings-field">
         <span class="settings-field__label">API Key</span>
-        <span class="settings-field__hint">仅保存在本地 Rust store，用于 Provider 鉴权。</span>
+        <span class="settings-field__hint">用于 Provider 鉴权。</span>
         <input
           v-model="settings.draft.apiKey"
           type="password"
@@ -59,71 +59,44 @@ const probeResultTone = computed(() => {
     </div>
 
     <div class="settings-row">
-      <label class="settings-field">
-        <span class="settings-field__label">模型名</span>
-        <span class="settings-field__hint">用于连通性测试和后续生成层默认调用。</span>
-        <input
-          v-model="settings.draft.model"
-          type="text"
-          autocomplete="off"
-          spellcheck="false"
-          aria-label="模型名"
-          placeholder="gpt-4.1-mini"
-        />
+      <div class="settings-field">
+        <span class="settings-field__label">模型</span>
+        <span class="settings-field__hint">先从远端获取模型列表，再选择默认模型。</span>
+        <div class="model-select-row">
+          <select
+            v-model="settings.draft.model"
+            aria-label="模型"
+            :disabled="settings.loadingModels.value || settings.modelOptions.value.length === 0"
+          >
+            <option value="" disabled>
+              {{ settings.loadingModels.value ? "正在获取模型..." : "请选择模型" }}
+            </option>
+            <option
+              v-for="model in settings.modelOptions.value"
+              :key="model"
+              :value="model"
+            >
+              {{ model }}
+            </option>
+          </select>
+          <button
+            type="button"
+            class="ghost model-fetch-button"
+            :aria-label="settings.loadingModels.value ? '正在获取模型' : '获取模型'"
+            :title="settings.loadingModels.value ? '正在获取模型' : '获取模型'"
+            :disabled="settings.loading.value || settings.loadingModels.value"
+            @click="settings.refreshModels"
+          >
+            <Download :size="14" aria-hidden="true" />
+          </button>
+        </div>
         <span v-if="settings.validationErrors.value.model" class="settings-field__error">
           {{ settings.validationErrors.value.model }}
         </span>
-      </label>
-    </div>
-
-    <div class="provider-grid">
-      <label class="settings-field">
-        <span class="settings-field__label">temperature</span>
-        <input
-          v-model="settings.draft.temperature"
-          type="number"
-          min="0"
-          max="2"
-          step="0.1"
-          inputmode="decimal"
-          aria-label="temperature"
-        />
-        <span v-if="settings.validationErrors.value.temperature" class="settings-field__error">
-          {{ settings.validationErrors.value.temperature }}
+        <span v-if="settings.modelListError.value" class="settings-field__error">
+          {{ settings.modelListError.value }}
         </span>
-      </label>
-
-      <label class="settings-field">
-        <span class="settings-field__label">top_p</span>
-        <input
-          v-model="settings.draft.topP"
-          type="number"
-          min="0"
-          max="1"
-          step="0.1"
-          inputmode="decimal"
-          aria-label="top_p"
-        />
-        <span v-if="settings.validationErrors.value.topP" class="settings-field__error">
-          {{ settings.validationErrors.value.topP }}
-        </span>
-      </label>
-
-      <label class="settings-field">
-        <span class="settings-field__label">超时(秒)</span>
-        <input
-          v-model="settings.draft.timeoutSeconds"
-          type="number"
-          min="1"
-          max="300"
-          step="1"
-          inputmode="numeric"
-          aria-label="超时(秒)"
-        />
-        <span v-if="settings.validationErrors.value.timeoutSeconds" class="settings-field__error">
-          {{ settings.validationErrors.value.timeoutSeconds }}
-        </span>
-      </label>
+      </div>
     </div>
 
     <div class="provider-actions">
@@ -138,10 +111,10 @@ const probeResultTone = computed(() => {
       <button
         type="button"
         class="ghost"
-        :disabled="settings.loading.value"
-        @click="settings.reload"
+        :disabled="settings.loading.value || settings.saving.value"
+        @click="settings.save"
       >
-        重新读取
+        {{ settings.saving.value ? "保存中..." : "保存" }}
       </button>
     </div>
 
@@ -174,26 +147,9 @@ const probeResultTone = computed(() => {
 </template>
 
 <style scoped>
-.provider-intro {
-  display: grid;
-  gap: 4px;
-  margin-bottom: 12px;
-}
-
-.provider-intro p {
-  margin: 0;
-}
-
 .settings-row {
   padding: 12px 0;
   border-bottom: 1px solid var(--border-soft);
-}
-
-.provider-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  padding: 12px 0 0;
 }
 
 .settings-field {
@@ -215,6 +171,24 @@ const probeResultTone = computed(() => {
 .settings-field__error {
   color: var(--err);
   font-size: 12px;
+}
+
+.model-select-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.model-select-row select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.model-fetch-button {
+  flex: 0 0 32px;
+  width: 32px;
+  padding: 0;
 }
 
 .provider-actions {
@@ -254,10 +228,6 @@ const probeResultTone = computed(() => {
 }
 
 @media (max-width: 900px) {
-  .provider-grid {
-    grid-template-columns: 1fr;
-  }
-
   .provider-actions {
     flex-wrap: wrap;
   }

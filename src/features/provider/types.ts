@@ -2,9 +2,6 @@ export interface ProviderConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
-  temperature: number;
-  topP: number;
-  timeoutSeconds: number;
 }
 
 export type ProviderResponseFormat = "text" | "jsonObject";
@@ -40,3 +37,19 @@ export interface ProviderProbeFailure {
 }
 
 export type ProviderProbeResult = ProviderProbeSuccess | ProviderProbeFailure;
+
+export interface ProviderModelListSuccess {
+  ok: true;
+  models: string[];
+  error?: undefined;
+}
+
+export interface ProviderModelListFailure {
+  ok: false;
+  error: ProviderError;
+  models?: undefined;
+}
+
+export type ProviderModelListResult =
+  | ProviderModelListSuccess
+  | ProviderModelListFailure;
