@@ -1,31 +1,104 @@
 import { fireEvent, render, screen } from "@testing-library/vue";
 import { createMemoryHistory } from "vue-router";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App.vue";
 import { APP_METADATA } from "../src/config/appShell";
+import {
+  resetProviderSettingsStateForTest,
+} from "../src/composables/useProviderSettings";
+import type {
+  ProviderConfig,
+  ProviderProbeResult,
+} from "../src/features/provider/types";
 import { createBigVRouter } from "../src/router";
+
+const loadedProviderConfig: ProviderConfig = {
+  baseUrl: "https://example.com/v1",
+  apiKey: "sk-router-test",
+  model: "gpt-4.1-mini",
+  temperature: 0.6,
+  topP: 0.9,
+  timeoutSeconds: 45,
+};
+
+const mockInvoke = vi.hoisted(() =>
+  vi.fn<(command: string, payload?: Record<string, unknown>) => Promise<unknown>>(),
+);
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (command: string, payload?: Record<string, unknown>) =>
+    mockInvoke(command, payload),
+}));
+
+function successProbe(): ProviderProbeResult {
+  return {
+    ok: true,
+    latencyMs: 182,
+    model: loadedProviderConfig.model,
+    message: "已通过 chat/completions 连通性测试",
+  };
+}
+
+function failureProbe(): ProviderProbeResult {
+  return {
+    ok: false,
+    error: {
+      kind: "http_status",
+      message: "provider 返回 HTTP 401",
+      statusCode: 401,
+    },
+  };
+}
+
+function installInvokeMock(overrides: Partial<Record<string, unknown>> = {}) {
+  mockInvoke.mockImplementation(async (command, payload) => {
+    if (command in overrides) {
+      const value = overrides[command];
+      if (value instanceof Error) throw value;
+      return value;
+    }
+    if (command === "load_provider_config") return loadedProviderConfig;
+    if (command === "save_provider_config") return payload?.config ?? loadedProviderConfig;
+    if (command === "test_provider_connection") return successProbe();
+    throw new Error(`unexpected command: ${command}`);
+  });
+}
 
 async function renderAt(path: string) {
   const router = createBigVRouter(createMemoryHistory());
   await router.push(path);
   await router.isReady();
 
-  render(App, {
+  const view = render(App, {
     global: {
       plugins: [router],
     },
   });
+  return {
+    ...view,
+    router,
+  };
 }
+
+beforeEach(() => {
+  resetProviderSettingsStateForTest();
+  mockInvoke.mockReset();
+  installInvokeMock();
+});
 
 describe("基础路由", () => {
   it("默认首页跳转到弹幕姬工作台", async () => {
     await renderAt("/");
 
-    expect(await screen.findByRole("heading", { level: 2, name: "功能启停" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 2, name: "AI 建议" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("自动投递")).toBeInTheDocument();
     expect(screen.getByText("把调试段落拆成“目标 -> 过程 -> 结论”三段")).toBeInTheDocument();
     expect(screen.getByText("阿黎：这一段反应好快，像是真的在跟弹幕对线。")).toBeInTheDocument();
     expect(screen.getByText("糖霜六号 [SC ¥30]：建议下一段切回剧情点评，不要一直卡在设置界面。")).toBeInTheDocument();
+    expect((await screen.findAllByText("Provider")).length).toBeGreaterThan(0);
+    expect(await screen.findByRole("link", { name: /Provider 待测试/ })).toHaveClass("sb-conn--warn");
+    expect(screen.getAllByText("待测试")).not.toHaveLength(0);
+    expect(screen.getByText(/example\.com\/v1 · 模型 gpt-4\.1-mini · API Key 已配置/)).toBeInTheDocument();
+    expect(mockInvoke).not.toHaveBeenCalledWith("test_provider_connection", undefined);
   });
 
   it("侧边栏显示四个功能标签，底部保留设置和状态入口", async () => {
@@ -41,10 +114,38 @@ describe("基础路由", () => {
     expect(screen.queryByRole("button", { name: "搜索" })).toBeNull();
     expect(screen.queryByRole("button", { name: "添加" })).toBeNull();
     expect(screen.queryByRole("link", { name: "扩展" })).toBeNull();
-    expect(
-      screen.getByRole("link", { name: "模拟状态：自动投递运行中" }),
-    ).toHaveClass("sb-conn--ok");
-    expect(screen.getByText("运行")).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /Provider 待测试/ })).toHaveClass("sb-conn--warn");
+    expect(screen.getAllByText("待测试").length).toBeGreaterThan(0);
+  });
+
+  it("Provider 手动探活成功后首页和侧栏展示真实结果", async () => {
+    const view = await renderAt("/settings?tab=provider");
+
+    await screen.findByDisplayValue(loadedProviderConfig.baseUrl);
+    await fireEvent.click(screen.getByRole("button", { name: "测试连通性" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("已通过 chat/completions 连通性测试");
+
+    await view.router.push("/danmaku");
+
+    expect(await screen.findByText("可用")).toBeInTheDocument();
+    expect(screen.getByText("182ms")).toBeInTheDocument();
+    expect(screen.getByText(/最近测试 .*模型 gpt-4\.1-mini，耗时 182ms/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /模拟状态：自动投递运行中 .*example\.com\/v1/ })).toHaveClass("sb-conn--ok");
+  });
+
+  it("Provider 手动探活失败后首页和侧栏展示错误态", async () => {
+    installInvokeMock({ test_provider_connection: failureProbe() });
+    const view = await renderAt("/settings?tab=provider");
+
+    await screen.findByDisplayValue(loadedProviderConfig.baseUrl);
+    await fireEvent.click(screen.getByRole("button", { name: "测试连通性" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("provider 返回 HTTP 401");
+
+    await view.router.push("/danmaku");
+
+    expect(await screen.findAllByText("异常")).not.toHaveLength(0);
+    expect(screen.getByText(/provider 返回 HTTP 401/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Provider 异常：provider 返回 HTTP 401/ })).toHaveClass("sb-conn--error");
   });
 
   it("设置页默认显示外观设置并使用设置侧栏", async () => {
@@ -103,15 +204,14 @@ describe("基础路由", () => {
   it("弹幕姬页开关只切换本地状态", async () => {
     await renderAt("/danmaku");
 
-    const toggle = await screen.findByRole("switch", { name: "自动投递" });
+    const toggle = await screen.findByRole("checkbox", { name: "自动投递" });
 
-    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(toggle).toBeChecked();
     await fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByText("自动投递已暂停")).toBeInTheDocument();
-    expect(screen.getAllByText("自动投递已关闭，新的互动结果不会继续进入渲染队列。")).toHaveLength(2);
-    expect(screen.getByRole("link", { name: "模拟状态：自动投递已暂停" })).toHaveClass("sb-conn--warn");
-    expect(screen.getByText("暂停")).toBeInTheDocument();
+    expect(toggle).not.toBeChecked();
+    expect(screen.getByText("自动投递已关闭，新的互动结果不会继续进入渲染队列。")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Provider 待测试/ })).toHaveClass("sb-conn--warn");
+    expect(screen.getAllByText("待测试").length).toBeGreaterThan(0);
     expect(localStorage.getItem("bigv.workbench")).toContain("\"key\":\"dispatch\"");
     expect(localStorage.getItem("bigv.workbench")).toContain("\"enabled\":false");
   });
@@ -176,7 +276,7 @@ describe("基础路由", () => {
   it("未知路由回到弹幕姬", async () => {
     await renderAt("/missing");
 
-    expect(await screen.findByRole("heading", { level: 2, name: "功能启停" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("自动投递")).toBeInTheDocument();
   });
 
   it("未知设置 tab 回落到外观", async () => {

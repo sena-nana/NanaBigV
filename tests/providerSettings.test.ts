@@ -1,6 +1,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ProviderSection from "../src/pages/settings/ProviderSection.vue";
+import {
+  resetProviderSettingsStateForTest,
+  useProviderStatusSummary,
+} from "../src/composables/useProviderSettings";
 import type {
   ProviderConfig,
   ProviderProbeResult,
@@ -62,6 +66,7 @@ function installInvokeMock(overrides: Partial<Record<string, unknown>> = {}) {
 describe("Provider settings", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    resetProviderSettingsStateForTest();
     mockInvoke.mockReset();
     installInvokeMock();
   });
@@ -124,6 +129,8 @@ describe("Provider settings", () => {
     expect(screen.getByText(`模型：${loadedConfig.model}`)).toBeInTheDocument();
     expect(screen.getByText("耗时：182 ms")).toBeInTheDocument();
     expect(mockInvoke).toHaveBeenCalledWith("test_provider_connection", undefined);
+    expect(useProviderStatusSummary().providerStatusSummary.value.label).toBe("可用");
+    expect(useProviderStatusSummary().providerStatusSummary.value.latencyLabel).toBe("182ms");
   });
 
   it("测试按钮在失败时展示错误类型和消息", async () => {
@@ -138,5 +145,7 @@ describe("Provider settings", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("http_status");
     expect(screen.getByText("provider 返回 HTTP 401")).toBeInTheDocument();
     expect(screen.getByText("HTTP 401")).toBeInTheDocument();
+    expect(useProviderStatusSummary().providerStatusSummary.value.label).toBe("异常");
+    expect(useProviderStatusSummary().providerStatusSummary.value.detail).toBe("provider 返回 HTTP 401");
   });
 });
