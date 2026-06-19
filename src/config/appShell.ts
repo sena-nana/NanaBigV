@@ -1,6 +1,7 @@
 import {
   BadgeDollarSign,
   Gauge,
+  Bug,
   Info,
   MessagesSquare,
   Palette,
@@ -89,7 +90,7 @@ export const SIDEBAR_FOOTER_STATUS: SidebarFooterStatus = {
   icon: Gauge,
 };
 
-export type SettingsTabKey = "appearance" | "provider" | "about";
+export type SettingsTabKey = "appearance" | "provider" | "debug" | "about";
 
 export interface SettingsTab {
   key: SettingsTabKey;
@@ -112,6 +113,12 @@ export const SETTINGS_TABS: SettingsTab[] = [
     to: { path: "/settings", query: { tab: "provider" } },
   },
   {
+    key: "debug",
+    label: "调试",
+    icon: Bug,
+    to: { path: "/settings", query: { tab: "debug" } },
+  },
+  {
     key: "about",
     label: "关于",
     icon: Info,
@@ -124,6 +131,7 @@ export const DEFAULT_SETTINGS_TAB: SettingsTabKey = "appearance";
 export const SETTINGS_SECTIONS: Record<SettingsTabKey, Component> = {
   appearance: defineAsyncComponent(() => import("../pages/settings/AppearanceSection.vue")),
   provider: defineAsyncComponent(() => import("../pages/settings/ProviderSection.vue")),
+  debug: defineAsyncComponent(() => import("../pages/settings/DebugSection.vue")),
   about: defineAsyncComponent(() => import("../pages/settings/AboutSection.vue")),
 };
 

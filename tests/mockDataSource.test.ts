@@ -22,7 +22,7 @@ describe("workbench mock data source", () => {
     vi.useRealTimers();
   });
 
-  it("starts manually and triggers frames on the configured interval", async () => {
+  it("starts and triggers frames on the configured interval", async () => {
     const runtime = createRuntime();
 
     runtime.source.start();
@@ -45,20 +45,6 @@ describe("workbench mock data source", () => {
     runtime.source.pause();
   });
 
-  it("steps a single frame without starting the loop", async () => {
-    const runtime = createRuntime();
-
-    await runtime.source.step();
-
-    expect(runtime.status.state).toBe("idle");
-    expect(runtime.status.tickCount).toBe(1);
-    expect(runtime.submitted.map((event) => event.source)).toEqual(["voice"]);
-    expect(runtime.queue.snapshot().records.map((record) => record.action)).toEqual([
-      "deliver",
-      "enqueue",
-    ]);
-  });
-
   it("stops interval ticks after pause", async () => {
     const runtime = createRuntime();
 
@@ -71,38 +57,29 @@ describe("workbench mock data source", () => {
     expect(runtime.queue.snapshot().records).toEqual([]);
   });
 
-  it("resets loop state and clears the event queue", async () => {
-    const runtime = createRuntime();
-
-    await runtime.source.step();
-    runtime.source.reset();
-
-    expect(runtime.status).toMatchObject({ state: "idle", tickCount: 0 });
-    expect(runtime.records).toEqual([]);
-    expect(runtime.queue.snapshot().records).toEqual([]);
-    expect(runtime.queue.snapshot().pending).toEqual([]);
-  });
-
   it("uses runtime toggles to throttle dispatch, gift, and super chat channels", async () => {
     const dispatchRuntime = createRuntime(withToggle("dispatch", false));
-    await dispatchRuntime.source.step();
+    dispatchRuntime.source.start();
+    await vi.advanceTimersByTimeAsync(MOCK_SOURCE_INTERVAL_MS);
+    dispatchRuntime.source.pause();
     expect(dispatchRuntime.queue.snapshot().stats.find((stat) => stat.type === "danmaku")).toMatchObject({
       delivered: 0,
       throttled: 1,
     });
 
     const giftRuntime = createRuntime(withToggle("gifts", false));
-    await giftRuntime.source.step();
-    await giftRuntime.source.step();
+    giftRuntime.source.start();
+    await vi.advanceTimersByTimeAsync(MOCK_SOURCE_INTERVAL_MS * 2);
+    giftRuntime.source.pause();
     expect(giftRuntime.queue.snapshot().stats.find((stat) => stat.type === "gift")).toMatchObject({
       delivered: 0,
       throttled: 1,
     });
 
     const superChatRuntime = createRuntime(withToggle("super-chat", false));
-    await superChatRuntime.source.step();
-    await superChatRuntime.source.step();
-    await superChatRuntime.source.step();
+    superChatRuntime.source.start();
+    await vi.advanceTimersByTimeAsync(MOCK_SOURCE_INTERVAL_MS * 3);
+    superChatRuntime.source.pause();
     expect(superChatRuntime.queue.snapshot().stats.find((stat) => stat.type === "super_chat")).toMatchObject({
       delivered: 0,
       throttled: 1,
@@ -112,9 +89,9 @@ describe("workbench mock data source", () => {
   it("submits reserved context sources without adding them to context events", async () => {
     const runtime = createRuntime();
 
-    await runtime.source.step();
-    await runtime.source.step();
-    await runtime.source.step();
+    runtime.source.start();
+    await vi.advanceTimersByTimeAsync(MOCK_SOURCE_INTERVAL_MS * 3);
+    runtime.source.pause();
 
     expect(runtime.submitted.map((event) => event.source)).toEqual(["voice", "echo_live", "vision"]);
     expect(runtime.contextWindow.events).toHaveLength(1);

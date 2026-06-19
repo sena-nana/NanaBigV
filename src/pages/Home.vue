@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
-import { Pause, Play, RotateCcw, Send, SkipForward, Trash2 } from "@lucide/vue";
+import { computed, onMounted, ref } from "vue";
+import { Send, Trash2 } from "@lucide/vue";
 import StatusBadge from "../components/workbench/StatusBadge.vue";
 import { useProviderSettings } from "../composables/useProviderSettings";
 import { useWorkbenchStore } from "../features/workbench/store";
@@ -19,27 +19,23 @@ const {
   submitVoiceContext,
   clearWorkbenchContextWindow,
   toggleRuntime,
-  startMockSource,
-  pauseMockSource,
-  stepMockSource,
-  resetMockSource,
 } = useWorkbenchStore();
 useProviderSettings();
 
 const voiceDraft = ref("");
 const homeSuggestions = computed(() => reviewView.value.suggestions.slice(0, 3));
 const canSubmitVoice = computed(() => voiceDraft.value.trim().length > 0 && !contextLoading.value);
-const mockSourceRunning = computed(() => view.value.mockSource.state === "running");
+
 const mockSourceStateMeta = computed(() => {
   const state = view.value.mockSource.state;
   return {
-    idle: { label: "待启动", tone: "info" },
+    idle: { label: "未启用", tone: "info" },
     running: { label: "运行中", tone: "ok" },
     paused: { label: "已暂停", tone: "warn" },
     error: { label: "异常", tone: "error" },
   }[state] as { label: string; tone: "ok" | "warn" | "error" | "info" };
 });
-const mockSourceLastEvent = computed(() => view.value.mockSource.lastEventLabel ?? "等待手动启动 mock 数据源");
+const mockSourceLastEvent = computed(() => view.value.mockSource.lastEventLabel ?? "Mock 数据源未启用，请到设置开启 Debug");
 
 const interactionTypeLabels: Record<InteractionEvent["type"], string> = {
   danmaku: "弹幕",
@@ -56,10 +52,6 @@ const contextSourceLabels: Record<ContextSourceKind, string> = {
 
 onMounted(() => {
   void refreshContextWindow();
-});
-
-onUnmounted(() => {
-  if (mockSourceRunning.value) pauseMockSource();
 });
 
 function suggestionTone(priority: string) {
@@ -110,9 +102,6 @@ async function clearContextEvents() {
   await clearWorkbenchContextWindow();
 }
 
-function toggleMockSourceLoop() {
-  mockSourceRunning.value ? pauseMockSource() : startMockSource();
-}
 </script>
 
 <template>
@@ -273,34 +262,6 @@ function toggleMockSourceLoop() {
                 <span>{{ view.mockSource.tickCount }} 次 · {{ view.mockSource.intervalMs }}ms</span>
                 <span>{{ mockSourceLastEvent }}</span>
                 <span v-if="view.mockSource.error" class="home-context-error">{{ view.mockSource.error }}</span>
-              </div>
-              <div class="home-mock-source__actions" aria-label="mock 数据源控制">
-                <button
-                  class="button-secondary home-action-button"
-                  type="button"
-                  @click="toggleMockSourceLoop"
-                >
-                  <Pause v-if="mockSourceRunning" :size="15" aria-hidden="true" />
-                  <Play v-else :size="15" aria-hidden="true" />
-                  <span>{{ mockSourceRunning ? "暂停" : "启动" }}</span>
-                </button>
-                <button
-                  class="button-secondary home-action-button"
-                  type="button"
-                  :disabled="mockSourceRunning"
-                  @click="stepMockSource"
-                >
-                  <SkipForward :size="15" aria-hidden="true" />
-                  <span>单步</span>
-                </button>
-                <button
-                  class="button-secondary home-action-button"
-                  type="button"
-                  @click="resetMockSource"
-                >
-                  <RotateCcw :size="15" aria-hidden="true" />
-                  <span>重置</span>
-                </button>
               </div>
             </div>
 
@@ -586,15 +547,6 @@ function toggleMockSourceLoop() {
   line-height: 1.45;
 }
 
-.home-mock-source__actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  flex: 0 0 auto;
-  flex-wrap: wrap;
-}
-
 .home-mock-records {
   display: flex;
   flex-direction: column;
@@ -807,10 +759,6 @@ function toggleMockSourceLoop() {
     flex-direction: column;
   }
 
-  .home-mock-source__actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
 }
 
 @media (max-width: 700px) {
