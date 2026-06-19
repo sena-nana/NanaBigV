@@ -17,7 +17,6 @@ const { audienceView: view } = useWorkbenchStore();
 const ACTIVITY_FILTER_VALUES = ["all", "high", "medium", "low"] as const;
 const SPENDING_FILTER_VALUES = ["all", "high", "medium", "low"] as const;
 const RELATIONSHIP_FILTER_VALUES = ["all", "core", "regular", "new"] as const;
-const AUDIENCE_IDS = view.value.audiences.map((audience) => audience.id);
 
 const activityFilter = usePersistentString<AudienceActivityLevel | "all">({
   key: `${APP_METADATA.storageKeyPrefix}.audienceActivityFilter`,
@@ -37,7 +36,6 @@ const relationshipFilter = usePersistentString<AudienceRelationship | "all">({
 const selectedAudienceId = usePersistentString<string>({
   key: `${APP_METADATA.storageKeyPrefix}.selectedAudienceId`,
   defaultValue: view.value.defaultAudienceId,
-  allowedValues: AUDIENCE_IDS,
 });
 
 const filteredAudiences = computed(() =>

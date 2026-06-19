@@ -11,6 +11,7 @@ import type {
   ProviderProbeResult,
 } from "../src/features/provider/types";
 import { createBigVRouter } from "../src/router";
+import { createMemorySnapshot } from "./memoryFixtures";
 
 const loadedProviderConfig: ProviderConfig = {
   baseUrl: "https://example.com/v1",
@@ -170,6 +171,7 @@ function installInvokeMock(overrides: Partial<Record<string, unknown>> = {}) {
     if (command === "list_provider_models") return modelList();
     if (command === "test_provider_connection") return successProbe();
     if (command === "load_context_window") return emptyContextWindow;
+    if (command === "load_memory_snapshot") return createMemorySnapshot();
     if (command === "submit_context_event") {
       const event = payload?.event as { content?: string } | undefined;
       return voiceContextWindow(event?.content ?? "");
@@ -180,6 +182,8 @@ function installInvokeMock(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 async function renderAt(path: string) {
+  const { useWorkbenchStore } = await import("../src/features/workbench/store");
+  await useWorkbenchStore().refreshMemorySnapshot();
   const router = createBigVRouter(createMemoryHistory());
   await router.push(path);
   await router.isReady();
@@ -474,6 +478,54 @@ describe("基础路由", () => {
 
     expect(await screen.findByText("主播：青栀")).toBeInTheDocument();
     expect(screen.getByText("把调试段落拆成“目标 -> 过程 -> 结论”三段")).toBeInTheDocument();
+  });
+
+  it("观众信息和直播回顾页读取 MemoryStore 快照而不是 mockSnapshot 占位", async () => {
+    const baseMemorySnapshot = createMemorySnapshot();
+    const memorySnapshot = createMemorySnapshot({
+      hostProfile: {
+        ...baseMemorySnapshot.hostProfile,
+        streamerName: "主播：MemoryStore 测试",
+      },
+      audienceProfiles: [
+        {
+          ...baseMemorySnapshot.audienceProfiles[0],
+          id: "memory-store-audience",
+          name: "记忆层观众",
+          summary: "来自真实 MemoryStore 快照的观众画像。",
+          memories: [
+            {
+              id: "memory-store-record",
+              layer: "audience_profile",
+              summary: "这条记忆只存在于测试 MemoryStore 快照。",
+              confidence: "高置信",
+              updatedAt: "刚刚",
+              audienceId: "memory-store-audience",
+            },
+          ],
+        },
+      ],
+      suggestions: [
+        {
+          id: "memory-store-suggestion",
+          category: "记忆策略",
+          title: "来自 MemoryStore 的建议",
+          detail: "测试页面数据来源。",
+          priority: "高优先级",
+        },
+      ],
+    });
+    installInvokeMock({ load_memory_snapshot: memorySnapshot });
+
+    const view = await renderAt("/audience");
+
+    expect(await screen.findByRole("heading", { level: 2, name: "记忆层观众" })).toBeInTheDocument();
+    expect(screen.getByText("这条记忆只存在于测试 MemoryStore 快照。")).toBeInTheDocument();
+
+    await view.router.push("/review");
+
+    expect(await screen.findByText("主播：MemoryStore 测试")).toBeInTheDocument();
+    expect(screen.getByText("来自 MemoryStore 的建议")).toBeInTheDocument();
   });
 
   it("未知路由回到弹幕姬", async () => {

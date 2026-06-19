@@ -5,6 +5,7 @@ const MAIN_WINDOW_LABEL: &str = "main";
 const BG: Color = Color(0x18, 0x18, 0x18, 0xFF);
 
 mod context;
+mod memory;
 mod provider;
 mod window_state;
 
@@ -47,6 +48,9 @@ pub fn run() {
             context::submit_context_event,
             context::load_context_window,
             context::clear_context_window,
+            memory::load_memory_snapshot,
+            memory::retrieve_memory,
+            memory::submit_memory_write,
             provider::load_provider_config,
             provider::save_provider_config,
             provider::test_provider_connection,

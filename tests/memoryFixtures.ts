@@ -1,0 +1,190 @@
+import type { MemoryStoreSnapshot } from "../src/features/memory/types";
+
+export function createMemorySnapshot(
+  overrides: Partial<MemoryStoreSnapshot> = {},
+): MemoryStoreSnapshot {
+  const snapshot: MemoryStoreSnapshot = {
+    hostProfile: {
+      streamerName: "主播：青栀",
+      personaSummary: "反应快、愿意把思路讲给观众听，擅长把调试过程讲成互动内容。",
+      languageStyle: "快语速、口头禅稳定，适合高频短弹幕和少量建议型 SC。",
+      streamTraits: ["擅长临场接梗", "调试过程可直播化", "高峰时段更适合轻吐槽互动"],
+      stableTopics: ["玩法点评", "开发现场", "翻车复盘", "观众接梗"],
+      tabooTopics: ["长时间纯静音调试", "连续高额消费暗示", "未经确认的现实人设扩写"],
+      updatedAt: "今天 19:58",
+      memories: [
+        {
+          id: "host-memory-1",
+          layer: "host_profile",
+          summary: "主播确认过调试段落需要讲清目标和结果。",
+          confidence: "高置信",
+          updatedAt: "今天 19:58",
+        },
+      ],
+    },
+    longTermFacts: [
+      {
+        id: "fact-a-li-chain",
+        layer: "long_term_fact",
+        summary: "当主播开始念弹幕时，阿黎经常第一时间起头制造连锁互动。",
+        confidence: "高置信",
+        updatedAt: "昨天 23:14",
+        audienceId: "a-li",
+      },
+      {
+        id: "fact-jing-dao-close",
+        layer: "long_term_fact",
+        summary: "镜岛常在收尾阶段帮助主播回收节奏，适合做收束型互动。",
+        confidence: "高置信",
+        updatedAt: "5 天前",
+        audienceId: "jing-dao",
+      },
+    ],
+    audienceProfiles: [
+      {
+        id: "a-li",
+        name: "阿黎",
+        tagLine: "高活跃 / 熟客 / 轻度付费",
+        summary: "偏吐槽型熟客，喜欢接主播口癖和场面梗，常承担冷场启动。",
+        roleTags: ["接梗快", "高活跃", "轻吐槽"],
+        activityLevel: "high",
+        activityLabel: "高活跃",
+        spendingTier: "medium",
+        spendingLabel: "中消费",
+        relationship: "core",
+        relationshipLabel: "核心熟客",
+        appearanceFrequency: "几乎每场都在",
+        languageStyle: "短句吐槽 + 轻微阴阳，但不会越界。",
+        preferences: [
+          { label: "互动偏好", detail: "喜欢主播自嘲、翻车补救和节奏拉扯。", strength: "强" },
+          { label: "礼物倾向", detail: "更偏好低额礼物和集中刷屏配合。", strength: "中" },
+          { label: "回避项", detail: "不喜欢长时间技术调试和空镜头。", strength: "强" },
+        ],
+        memories: [
+          {
+            id: "profile-a-li-humor",
+            layer: "audience_profile",
+            summary: "对主播的自黑式幽默容忍度高，但不喜欢硬切商务口播。",
+            confidence: "中置信",
+            updatedAt: "3 天前",
+            audienceId: "a-li",
+          },
+        ],
+        recentBehaviors: [
+          {
+            id: "behavior-1",
+            happenedAt: "20:41",
+            interactionType: "danmaku",
+            detail: "在主播改设置时发起“别修了快开播”的吐槽。",
+            result: "带动 6 条跟风弹幕",
+          },
+        ],
+      },
+      {
+        id: "bei-jie-zhou",
+        name: "北街舟",
+        tagLine: "中活跃 / 老观众 / 稳定消费",
+        summary: "更像氛围维护者，愿意在合适时机打赏，但讨厌刷屏和过度表演。",
+        roleTags: ["氛围维护", "稳定消费", "节奏保守"],
+        activityLevel: "medium",
+        activityLabel: "中活跃",
+        spendingTier: "high",
+        spendingLabel: "高消费",
+        relationship: "regular",
+        relationshipLabel: "稳定观众",
+        appearanceFrequency: "每周 3 到 4 场",
+        languageStyle: "完整句子、语气平和，偏建议型表达。",
+        preferences: [
+          { label: "互动偏好", detail: "偏好主播讲解思路、复盘失败原因。", strength: "强" },
+        ],
+        memories: [
+          {
+            id: "profile-bei-review",
+            layer: "audience_profile",
+            summary: "当主播进入复盘模式时，北街舟更可能发送长弹幕或建议型 SC。",
+            confidence: "高置信",
+            updatedAt: "今天 10:02",
+            audienceId: "bei-jie-zhou",
+          },
+        ],
+        recentBehaviors: [],
+      },
+      {
+        id: "tang-shuang",
+        name: "糖霜六号",
+        tagLine: "低活跃 / 新观众 / 谨慎消费",
+        summary: "偶发高价值表达，但稳定性不足，适合作为新观众观察样本。",
+        roleTags: ["新观众", "偶发高价值", "不稳定"],
+        activityLevel: "low",
+        activityLabel: "低活跃",
+        spendingTier: "high",
+        spendingLabel: "高消费",
+        relationship: "new",
+        relationshipLabel: "新观众",
+        appearanceFrequency: "近两场新出现",
+        languageStyle: "比较直接，经常给出目标导向建议。",
+        preferences: [
+          { label: "互动偏好", detail: "偏好有明确主题和目标的直播段落。", strength: "中" },
+        ],
+        memories: [],
+        recentBehaviors: [],
+      },
+      {
+        id: "jing-dao",
+        name: "镜岛",
+        tagLine: "中活跃 / 熟客 / 低消费",
+        summary: "偏陪伴型观众，更关注直播氛围完整性和主播个人状态。",
+        roleTags: ["陪伴型", "熟客", "低消费"],
+        activityLevel: "medium",
+        activityLabel: "中活跃",
+        spendingTier: "low",
+        spendingLabel: "低消费",
+        relationship: "regular",
+        relationshipLabel: "稳定观众",
+        appearanceFrequency: "常出现在收尾时段",
+        languageStyle: "更柔和，经常发安抚型短句。",
+        preferences: [
+          { label: "互动偏好", detail: "偏好主播聊状态、收尾总结和日常碎片。", strength: "中" },
+        ],
+        memories: [],
+        recentBehaviors: [],
+      },
+    ],
+    sessionRecaps: [
+      {
+        id: "session-1",
+        dateLabel: "06-17",
+        title: "玩法试玩 + 调试并行",
+        rhythmLabel: "中段升温明显",
+        summary: "主播把一次配置失败转成了临场讲解，互动密度在 15 分钟后明显拉升。",
+        peakMoment: "20:46 主播自嘲配置翻车，弹幕接梗形成连续 18 条互动。",
+        memoryWrites: 3,
+        memories: [],
+      },
+    ],
+    highlights: [
+      {
+        id: "highlight-1",
+        happenedAt: "20:46",
+        title: "翻车讲解触发连锁互动",
+        detail: "主播主动拆解错误原因后，熟客型观众连续接梗，互动密度迅速抬升。",
+        impact: "证明“讲思路”比“闷头修”更能带起实时观众反应。",
+      },
+    ],
+    suggestions: [
+      {
+        id: "suggestion-1",
+        category: "直播节奏",
+        title: "把调试段落拆成“目标 -> 过程 -> 结论”三段",
+        detail: "当前高活跃观众能接受调试，但需要明确每段要解决什么。",
+        priority: "高优先级",
+      },
+    ],
+    writeRecords: [],
+  };
+
+  return {
+    ...snapshot,
+    ...overrides,
+  };
+}
