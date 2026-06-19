@@ -73,4 +73,34 @@ describe("local blivechat event runtime", () => {
     });
     expect(snapshot.records[0].reason).toBe("通道关闭或自动投递暂停");
   });
+
+  it("resets pending events, records, stats, and emits a snapshot", () => {
+    const queue = createLocalBlivechatQueue(() => 1_000);
+    const snapshots: BlivechatQueueSnapshot[] = [];
+    queue.onSnapshot((snapshot) => snapshots.push(snapshot));
+
+    queue.enqueue(
+      {
+        type: "gift",
+        audienceName: "北街舟",
+        content: "本地礼物",
+      },
+      1_000,
+    );
+    queue.deliverNext(() => true, 1_200);
+    queue.reset();
+
+    const snapshot = queue.snapshot();
+
+    expect(snapshots).toHaveLength(3);
+    expect(snapshot.pending).toEqual([]);
+    expect(snapshot.records).toEqual([]);
+    expect(snapshot.recentEvents).toEqual([]);
+    expect(snapshot.stats).toEqual([
+      { type: "danmaku", label: "弹幕", queued: 0, delivered: 0, throttled: 0 },
+      { type: "gift", label: "礼物", queued: 0, delivered: 0, throttled: 0 },
+      { type: "super_chat", label: "SC", queued: 0, delivered: 0, throttled: 0 },
+      { type: "membership", label: "舰长", queued: 0, delivered: 0, throttled: 0 },
+    ]);
+  });
 });

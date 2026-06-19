@@ -135,6 +135,13 @@ export const BIGV_WORKBENCH_SNAPSHOT: BigVWorkbenchSnapshot = {
         happenedAt: "20:39:49",
       },
     ],
+    mockSource: {
+      state: "idle",
+      scenarioLabel: "本地直播循环",
+      tickCount: 0,
+      intervalMs: 2500,
+    },
+    mockSourceRecords: [],
     notices: [
       {
         id: "notice-2",

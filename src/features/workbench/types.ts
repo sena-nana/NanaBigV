@@ -72,6 +72,27 @@ export interface RuntimeNotice {
   tone: StatusTone;
 }
 
+export type MockSourceRunState = "idle" | "running" | "paused" | "error";
+
+export interface MockSourceStatus {
+  state: MockSourceRunState;
+  scenarioLabel: string;
+  tickCount: number;
+  intervalMs: number;
+  lastEventLabel?: string;
+  error?: string;
+}
+
+export interface MockSourceRecord {
+  id: string;
+  frameLabel: string;
+  contextLabels: string[];
+  interactionLabels: string[];
+  statusLabel: string;
+  tone: StatusTone;
+  happenedAt: string;
+}
+
 export interface DanmakuViewModel {
   liveStatus: LiveRoomStatus;
   inputSources: InputSourceStatus[];
@@ -80,6 +101,8 @@ export interface DanmakuViewModel {
   toggles: RuntimeToggleState[];
   queueStats: DeliveryQueueStat[];
   recentEvents: InteractionEvent[];
+  mockSource: MockSourceStatus;
+  mockSourceRecords: MockSourceRecord[];
   notices: RuntimeNotice[];
 }
 
