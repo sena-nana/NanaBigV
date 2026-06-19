@@ -16,9 +16,6 @@ const loadedProviderConfig: ProviderConfig = {
   baseUrl: "https://example.com/v1",
   apiKey: "sk-router-test",
   model: "gpt-4.1-mini",
-  temperature: 0.6,
-  topP: 0.9,
-  timeoutSeconds: 45,
 };
 
 const mockInvoke = vi.hoisted(() =>
@@ -97,7 +94,7 @@ function successProbe(): ProviderProbeResult {
     ok: true,
     latencyMs: 182,
     model: loadedProviderConfig.model,
-    message: "已通过 chat/completions 连通性测试",
+    message: "Provider 连通性测试通过",
   };
 }
 
@@ -112,6 +109,13 @@ function failureProbe(): ProviderProbeResult {
   };
 }
 
+function modelList() {
+  return {
+    ok: true,
+    models: ["gpt-4.1", loadedProviderConfig.model],
+  };
+}
+
 function installInvokeMock(overrides: Partial<Record<string, unknown>> = {}) {
   mockInvoke.mockImplementation(async (command, payload) => {
     if (command in overrides) {
@@ -121,6 +125,7 @@ function installInvokeMock(overrides: Partial<Record<string, unknown>> = {}) {
     }
     if (command === "load_provider_config") return loadedProviderConfig;
     if (command === "save_provider_config") return payload?.config ?? loadedProviderConfig;
+    if (command === "list_provider_models") return modelList();
     if (command === "test_provider_connection") return successProbe();
     if (command === "load_context_window") return emptyContextWindow;
     if (command === "submit_context_event") {
@@ -191,7 +196,7 @@ describe("基础路由", () => {
 
     await screen.findByDisplayValue(loadedProviderConfig.baseUrl);
     await fireEvent.click(screen.getByRole("button", { name: "测试连通性" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("已通过 chat/completions 连通性测试");
+    expect(await screen.findByRole("status")).toHaveTextContent("Provider 连通性测试通过");
 
     await view.router.push("/danmaku");
 

@@ -11,6 +11,7 @@ import type {
   ProviderDraftErrors,
 } from "../features/provider/config";
 import {
+  listProviderModels,
   loadProviderConfig,
   saveProviderConfig,
   testProviderConnection,
@@ -39,16 +40,19 @@ const draft = reactive<ProviderDraft>(createProviderDraft());
 const loading = ref(true);
 const saving = ref(false);
 const probing = ref(false);
+const loadingModels = ref(false);
 const loadError = ref<string | null>(null);
 const saveError = ref<string | null>(null);
-const savedOnce = ref(false);
+const modelListError = ref<string | null>(null);
 const probeResult = ref<ProviderProbeResult | null>(null);
 const lastProbeAt = ref<Date | null>(null);
+const modelOptions = ref<string[]>([]);
 
 let saveTimer: number | null = null;
 let applyingRemoteState = false;
 let loadedOnce = false;
 let loadPromise: Promise<void> | null = null;
+let currentProviderKey = "";
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -133,7 +137,7 @@ const providerStatusSummary = computed<ProviderStatusSummary>(() => {
       label: "测试中",
       tone: "info",
       title: `Provider：正在测试连通性 · ${summary}`,
-      detail: "正在通过 chat/completions 测试 Provider 连通性。",
+      detail: "正在测试 Provider 连通性。",
       latencyLabel: "测试中",
     });
   }
@@ -184,7 +188,12 @@ function clearPendingSave() {
 function applyConfigToDraft(config = DEFAULT_PROVIDER_CONFIG) {
   applyingRemoteState = true;
   Object.assign(draft, createProviderDraft(config));
+  currentProviderKey = providerKey();
   applyingRemoteState = false;
+}
+
+function providerKey() {
+  return `${draft.baseUrl.trim()}\n${draft.apiKey.trim()}`;
 }
 
 async function load(force = false) {
@@ -197,8 +206,10 @@ async function load(force = false) {
     try {
       applyConfigToDraft(await loadProviderConfig());
       saveError.value = null;
-      savedOnce.value = false;
       loadedOnce = true;
+      if (draft.baseUrl.trim() && draft.apiKey.trim()) {
+        void refreshModels();
+      }
     } catch (error) {
       loadError.value = toErrorMessage(error);
       applyConfigToDraft(DEFAULT_PROVIDER_CONFIG);
@@ -212,7 +223,7 @@ async function load(force = false) {
 }
 
 function parseStorageDraft() {
-  return parseProviderDraft(draft, { requireCredentials: false });
+  return parseProviderDraft(draft, { requireApiKey: false, requireModel: false });
 }
 
 async function persistNow() {
@@ -221,7 +232,6 @@ async function persistNow() {
 
   if (!config) {
     saveError.value = firstProviderError(errors) ?? "当前配置尚未保存。";
-    savedOnce.value = false;
     return false;
   }
 
@@ -231,11 +241,9 @@ async function persistNow() {
   try {
     const saved = await saveProviderConfig(config);
     applyConfigToDraft(saved);
-    savedOnce.value = true;
     return true;
   } catch (error) {
     saveError.value = toErrorMessage(error);
-    savedOnce.value = false;
     return false;
   } finally {
     saving.value = false;
@@ -248,7 +256,6 @@ function scheduleSave() {
 
   if (Object.keys(errors).length > 0) {
     saveError.value = firstProviderError(errors) ?? "当前配置尚未保存。";
-    savedOnce.value = false;
     return;
   }
 
@@ -291,13 +298,48 @@ async function runProbe() {
   }
 }
 
-const statusText = computed(() => {
-  if (loading.value) return "正在读取本地 Provider 配置";
-  if (saving.value) return "正在保存到本地 store";
-  if (saveError.value) return `本地保存失败：${saveError.value}`;
-  if (savedOnce.value) return "已保存到本地 store";
-  return "配置由本地 Rust store 托管";
-});
+async function refreshModels() {
+  const { config, errors } = parseProviderDraft(draft, { requireModel: false });
+  if (!config) {
+    modelListError.value = firstProviderError(errors) ?? "请先填写 Base URL 和 API Key。";
+    modelOptions.value = [];
+    return;
+  }
+
+  loadingModels.value = true;
+  modelListError.value = null;
+
+  try {
+    const result = await listProviderModels(config);
+    if (!result.ok) {
+      modelListError.value = result.error.message;
+      modelOptions.value = [];
+      return;
+    }
+    modelOptions.value = result.models;
+    if (draft.model && !modelOptions.value.includes(draft.model)) {
+      draft.model = "";
+    }
+  } catch (error) {
+    modelListError.value = toErrorMessage(error);
+    modelOptions.value = [];
+  } finally {
+    loadingModels.value = false;
+  }
+}
+
+watch(
+  () => [draft.baseUrl, draft.apiKey],
+  () => {
+    if (loading.value || applyingRemoteState) return;
+    const nextProviderKey = providerKey();
+    if (nextProviderKey === currentProviderKey) return;
+    currentProviderKey = nextProviderKey;
+    modelOptions.value = [];
+    modelListError.value = null;
+    if (draft.model) draft.model = "";
+  },
+);
 
 watch(
   draft,
@@ -324,15 +366,18 @@ export function useProviderSettings() {
     loading,
     saving,
     probing,
+    loadingModels,
     loadError,
     saveError,
+    modelListError,
     probeResult,
     lastProbeAt,
+    modelOptions,
     providerStatusSummary,
-    statusText,
     validationErrors,
     runProbe,
-    reload: () => load(true),
+    refreshModels,
+    save: persistNow,
   };
 }
 
@@ -346,15 +391,18 @@ export function resetProviderSettingsStateForTest() {
   clearPendingSave();
   applyingRemoteState = true;
   Object.assign(draft, createProviderDraft());
+  currentProviderKey = providerKey();
   applyingRemoteState = false;
   loading.value = true;
   saving.value = false;
   probing.value = false;
+  loadingModels.value = false;
   loadError.value = null;
   saveError.value = null;
-  savedOnce.value = false;
+  modelListError.value = null;
   probeResult.value = null;
   lastProbeAt.value = null;
+  modelOptions.value = [];
   loadedOnce = false;
   loadPromise = null;
 }

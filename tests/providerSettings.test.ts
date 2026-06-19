@@ -14,9 +14,6 @@ const loadedConfig: ProviderConfig = {
   baseUrl: "https://example.com/v1",
   apiKey: "sk-local-test",
   model: "gpt-4.1-mini",
-  temperature: 0.6,
-  topP: 0.9,
-  timeoutSeconds: 45,
 };
 
 const mockInvoke = vi.fn<
@@ -33,7 +30,7 @@ function successProbe(): ProviderProbeResult {
     ok: true,
     latencyMs: 182,
     model: loadedConfig.model,
-    message: "已通过 chat/completions 连通性测试",
+    message: "Provider 连通性测试通过",
   };
 }
 
@@ -49,6 +46,13 @@ function failureProbe(): ProviderProbeResult {
   };
 }
 
+function modelList() {
+  return {
+    ok: true,
+    models: ["gpt-4.1", loadedConfig.model],
+  };
+}
+
 function installInvokeMock(overrides: Partial<Record<string, unknown>> = {}) {
   mockInvoke.mockImplementation(async (command, payload) => {
     if (command in overrides) {
@@ -58,6 +62,7 @@ function installInvokeMock(overrides: Partial<Record<string, unknown>> = {}) {
     }
     if (command === "load_provider_config") return loadedConfig;
     if (command === "save_provider_config") return payload?.config ?? loadedConfig;
+    if (command === "list_provider_models") return modelList();
     if (command === "test_provider_connection") return successProbe();
     throw new Error(`unexpected command: ${command}`);
   });
@@ -75,22 +80,25 @@ describe("Provider settings", () => {
     vi.useRealTimers();
   });
 
-  it("首次加载会读取并显示 Rust store 中的 Provider 配置", async () => {
+  it("首次加载会读取 Provider 配置并获取远端模型", async () => {
     render(ProviderSection);
 
     expect(await screen.findByDisplayValue(loadedConfig.baseUrl)).toBeInTheDocument();
-    expect(screen.getByDisplayValue(loadedConfig.model)).toBeInTheDocument();
-    expect(screen.getByDisplayValue(String(loadedConfig.temperature))).toBeInTheDocument();
+    expect(await screen.findByDisplayValue(loadedConfig.model)).toBeInTheDocument();
     expect(mockInvoke).toHaveBeenCalledWith("load_provider_config", undefined);
-    expect(screen.getByText("配置由本地 Rust store 托管")).toBeInTheDocument();
+    expect(mockInvoke).toHaveBeenCalledWith("list_provider_models", {
+      config: loadedConfig,
+    });
+    expect(screen.getByRole("heading", { name: "模型配置" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "获取模型" })).toBeInTheDocument();
   });
 
-  it("字段编辑后会自动保存到本地 store", async () => {
+  it("模型选择后会自动保存配置", async () => {
     render(ProviderSection);
 
     await screen.findByDisplayValue(loadedConfig.model);
-    const modelInput = screen.getByLabelText("模型名");
-    await fireEvent.update(modelInput, "gpt-4.1");
+    const modelSelect = screen.getByLabelText("模型");
+    await fireEvent.update(modelSelect, "gpt-4.1");
     await Promise.resolve();
     await vi.advanceTimersByTimeAsync(400);
     await Promise.resolve();
@@ -98,7 +106,17 @@ describe("Provider settings", () => {
     expect(mockInvoke).toHaveBeenCalledWith("save_provider_config", {
       config: expect.objectContaining({ model: "gpt-4.1" }),
     });
-    expect(screen.getByText("已保存到本地 store")).toBeInTheDocument();
+  });
+
+  it("保存按钮会立即保存当前配置", async () => {
+    render(ProviderSection);
+
+    await screen.findByDisplayValue(loadedConfig.model);
+    await fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(mockInvoke).toHaveBeenCalledWith("save_provider_config", {
+      config: loadedConfig,
+    });
   });
 
   it("本地保存失败时会显示明确错误", async () => {
@@ -108,8 +126,8 @@ describe("Provider settings", () => {
     render(ProviderSection);
 
     await screen.findByDisplayValue(loadedConfig.model);
-    const modelInput = screen.getByLabelText("模型名");
-    await fireEvent.update(modelInput, "gpt-4.1");
+    const modelSelect = screen.getByLabelText("模型");
+    await fireEvent.update(modelSelect, "gpt-4.1");
     await Promise.resolve();
     await vi.advanceTimersByTimeAsync(400);
     await Promise.resolve();
@@ -124,7 +142,7 @@ describe("Provider settings", () => {
     await fireEvent.click(screen.getByRole("button", { name: "测试连通性" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "已通过 chat/completions 连通性测试",
+      "Provider 连通性测试通过",
     );
     expect(screen.getByText(`模型：${loadedConfig.model}`)).toBeInTheDocument();
     expect(screen.getByText("耗时：182 ms")).toBeInTheDocument();

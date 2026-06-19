@@ -1,5 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ProviderConfig, ProviderProbeResult } from "./types";
+import type {
+  ProviderConfig,
+  ProviderModelListResult,
+  ProviderProbeResult,
+} from "./types";
 
 export async function loadProviderConfig(): Promise<ProviderConfig> {
   return invoke<ProviderConfig>("load_provider_config");
@@ -13,4 +17,10 @@ export async function saveProviderConfig(
 
 export async function testProviderConnection(): Promise<ProviderProbeResult> {
   return invoke<ProviderProbeResult>("test_provider_connection");
+}
+
+export async function listProviderModels(
+  config: ProviderConfig,
+): Promise<ProviderModelListResult> {
+  return invoke<ProviderModelListResult>("list_provider_models", { config });
 }

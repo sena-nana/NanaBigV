@@ -8,6 +8,7 @@ use tauri_plugin_store::StoreExt;
 const PROVIDER_SETTINGS_STORE_FILE: &str = "provider-settings.json";
 const PROVIDER_SETTINGS_KEY: &str = "provider";
 const RESPONSE_SNIPPET_LIMIT: usize = 240;
+const PROVIDER_HTTP_TIMEOUT_SECONDS: u64 = 30;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -15,9 +16,6 @@ pub struct ProviderConfig {
     pub base_url: String,
     pub api_key: String,
     pub model: String,
-    pub temperature: f64,
-    pub top_p: f64,
-    pub timeout_seconds: u64,
 }
 
 impl Default for ProviderConfig {
@@ -26,15 +24,16 @@ impl Default for ProviderConfig {
             base_url: "https://api.openai.com/v1".to_string(),
             api_key: String::new(),
             model: String::new(),
-            temperature: 0.7,
-            top_p: 1.0,
-            timeout_seconds: 30,
         }
     }
 }
 
 impl ProviderConfig {
-    fn normalized(&self, require_credentials: bool) -> Result<Self, ProviderError> {
+    fn normalized(
+        &self,
+        require_api_key: bool,
+        require_model: bool,
+    ) -> Result<Self, ProviderError> {
         let base_url = self.base_url.trim();
         if base_url.is_empty() {
             return Err(ProviderError::invalid_config("Base URL 不能为空", None));
@@ -51,39 +50,17 @@ impl ProviderConfig {
             ));
         }
 
-        if !(0.0..=2.0).contains(&self.temperature) {
-            return Err(ProviderError::invalid_config(
-                "temperature 必须在 0 到 2 之间",
-                None,
-            ));
-        }
-        if !(0.0..=1.0).contains(&self.top_p) {
-            return Err(ProviderError::invalid_config(
-                "top_p 必须在 0 到 1 之间",
-                None,
-            ));
-        }
-        if !(1..=300).contains(&self.timeout_seconds) {
-            return Err(ProviderError::invalid_config(
-                "超时必须是 1 到 300 秒之间的整数",
-                None,
-            ));
-        }
-
         let normalized = Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             api_key: self.api_key.trim().to_string(),
             model: self.model.trim().to_string(),
-            temperature: self.temperature,
-            top_p: self.top_p,
-            timeout_seconds: self.timeout_seconds,
         };
 
-        if require_credentials && normalized.api_key.is_empty() {
+        if require_api_key && normalized.api_key.is_empty() {
             return Err(ProviderError::invalid_config("API Key 不能为空", None));
         }
-        if require_credentials && normalized.model.is_empty() {
-            return Err(ProviderError::invalid_config("模型名不能为空", None));
+        if require_model && normalized.model.is_empty() {
+            return Err(ProviderError::invalid_config("请先获取并选择模型", None));
         }
 
         Ok(normalized)
@@ -91,6 +68,10 @@ impl ProviderConfig {
 
     fn endpoint_url(&self) -> String {
         format!("{}/chat/completions", self.base_url)
+    }
+
+    fn models_url(&self) -> String {
+        format!("{}/models", self.base_url)
     }
 }
 
@@ -205,6 +186,34 @@ impl ProviderProbeResult {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderModelListResult {
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub models: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<ProviderError>,
+}
+
+impl ProviderModelListResult {
+    fn success(models: Vec<String>) -> Self {
+        Self {
+            ok: true,
+            models: Some(models),
+            error: None,
+        }
+    }
+
+    fn failure(error: ProviderError) -> Self {
+        Self {
+            ok: false,
+            models: None,
+            error: Some(error),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ProviderMessage {
     role: String,
@@ -224,9 +233,17 @@ struct ProviderClient {
 
 impl ProviderClient {
     fn new(config: ProviderConfig) -> Result<Self, ProviderError> {
-        let config = config.normalized(true)?;
+        Self::from_config(config, true)
+    }
+
+    fn new_for_model_list(config: ProviderConfig) -> Result<Self, ProviderError> {
+        Self::from_config(config, false)
+    }
+
+    fn from_config(config: ProviderConfig, require_model: bool) -> Result<Self, ProviderError> {
+        let config = config.normalized(true, require_model)?;
         let http = Client::builder()
-            .timeout(Duration::from_secs(config.timeout_seconds))
+            .timeout(Duration::from_secs(PROVIDER_HTTP_TIMEOUT_SECONDS))
             .build()
             .map_err(|error| ProviderError::transport(format!("创建 HTTP 客户端失败：{error}")))?;
 
@@ -258,8 +275,6 @@ impl ProviderClient {
                     "content": &message.content,
                 })
             }).collect::<Vec<_>>(),
-            "temperature": self.config.temperature,
-            "top_p": self.config.top_p,
         });
 
         if request.response_format == ProviderResponseFormat::JsonObject {
@@ -317,7 +332,45 @@ impl ProviderClient {
             .map(ToOwned::to_owned)
             .unwrap_or_else(|| self.config.model.clone());
 
-        ProviderProbeResult::success(latency_ms, model, "已通过 chat/completions 连通性测试")
+        ProviderProbeResult::success(latency_ms, model, "Provider 连通性测试通过")
+    }
+
+    async fn list_models(&self) -> ProviderModelListResult {
+        let response_body = match self.fetch_models().await {
+            Ok(response_body) => response_body,
+            Err(error) => return ProviderModelListResult::failure(error),
+        };
+
+        match parse_models_response(&response_body) {
+            Ok(models) => ProviderModelListResult::success(models),
+            Err(error) => ProviderModelListResult::failure(error),
+        }
+    }
+
+    async fn fetch_models(&self) -> Result<Value, ProviderError> {
+        let response = self
+            .http
+            .get(self.config.models_url())
+            .bearer_auth(&self.config.api_key)
+            .send()
+            .await
+            .map_err(|error| map_transport_error(error.is_timeout(), error.to_string()))?;
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|error| map_transport_error(error.is_timeout(), error.to_string()))?;
+
+        if !status.is_success() {
+            return Err(ProviderError::http_status(status, &body));
+        }
+
+        serde_json::from_str::<Value>(&body).map_err(|error| {
+            ProviderError::invalid_response(
+                format!("provider 返回的模型列表不是合法 JSON：{error}"),
+                snippet(&body),
+            )
+        })
     }
 }
 
@@ -331,7 +384,7 @@ fn load_provider_config_from_store(app: &AppHandle) -> Result<ProviderConfig, St
 
     match serde_json::from_value::<ProviderConfig>(value) {
         Ok(config) => Ok(config
-            .normalized(false)
+            .normalized(false, false)
             .unwrap_or_else(|_| ProviderConfig::default())),
         Err(_) => Ok(ProviderConfig::default()),
     }
@@ -342,7 +395,7 @@ fn save_provider_config_to_store(
     config: ProviderConfig,
 ) -> Result<ProviderConfig, String> {
     let normalized = config
-        .normalized(false)
+        .normalized(false, false)
         .map_err(|error| error.message.clone())?;
     let store = app
         .store(PROVIDER_SETTINGS_STORE_FILE)
@@ -355,6 +408,39 @@ fn save_provider_config_to_store(
         .map_err(|error| format!("failed to save provider settings: {error}"))?;
 
     Ok(normalized)
+}
+
+fn parse_models_response(response_body: &Value) -> Result<Vec<String>, ProviderError> {
+    let data = response_body
+        .get("data")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            ProviderError::invalid_response(
+                "provider 模型列表缺少 data 数组",
+                snippet(&response_body.to_string()),
+            )
+        })?;
+
+    let mut models = data
+        .iter()
+        .filter_map(|item| {
+            item.get("id")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        })
+        .collect::<Vec<_>>();
+
+    models.sort();
+    models.dedup();
+
+    if models.is_empty() {
+        return Err(ProviderError::invalid_response(
+            "provider 模型列表未包含可用模型",
+            snippet(&response_body.to_string()),
+        ));
+    }
+
+    Ok(models)
 }
 
 fn validate_probe_response(response_body: &Value) -> Result<(), ProviderError> {
@@ -447,6 +533,16 @@ pub async fn test_provider_connection(app: AppHandle) -> ProviderProbeResult {
     client.probe().await
 }
 
+#[tauri::command]
+pub async fn list_provider_models(config: ProviderConfig) -> ProviderModelListResult {
+    let client = match ProviderClient::new_for_model_list(config) {
+        Ok(client) => client,
+        Err(error) => return ProviderModelListResult::failure(error),
+    };
+
+    client.list_models().await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -467,47 +563,25 @@ mod tests {
                 base_url: "https://api.openai.com/v1".to_string(),
                 api_key: String::new(),
                 model: String::new(),
-                temperature: 0.7,
-                top_p: 1.0,
-                timeout_seconds: 30,
             }
         );
     }
 
     #[test]
-    fn provider_config_rejects_invalid_ranges_and_url() {
+    fn provider_config_rejects_invalid_url_and_missing_model() {
         let invalid_url = ProviderConfig {
             base_url: "ftp://example.com".to_string(),
             ..ProviderConfig::default()
         };
-        let invalid_temperature = ProviderConfig {
-            temperature: 3.0,
-            ..ProviderConfig::default()
-        };
-        let invalid_top_p = ProviderConfig {
-            top_p: 2.0,
-            ..ProviderConfig::default()
-        };
-        let invalid_timeout = ProviderConfig {
-            timeout_seconds: 0,
-            ..ProviderConfig::default()
-        };
 
         assert_eq!(
-            invalid_url.normalized(false).unwrap_err().kind,
+            invalid_url.normalized(false, false).unwrap_err().kind,
             ProviderErrorKind::InvalidConfig
         );
+        let missing_model = ProviderConfig::default();
         assert_eq!(
-            invalid_temperature.normalized(false).unwrap_err().kind,
-            ProviderErrorKind::InvalidConfig
-        );
-        assert_eq!(
-            invalid_top_p.normalized(false).unwrap_err().kind,
-            ProviderErrorKind::InvalidConfig
-        );
-        assert_eq!(
-            invalid_timeout.normalized(false).unwrap_err().kind,
-            ProviderErrorKind::InvalidConfig
+            missing_model.normalized(false, true).unwrap_err().kind,
+            ProviderErrorKind::InvalidConfig,
         );
     }
 
@@ -517,7 +591,7 @@ mod tests {
             base_url: "https://example.com/v1/".to_string(),
             ..ProviderConfig::default()
         };
-        let normalized = config.normalized(false).unwrap();
+        let normalized = config.normalized(false, false).unwrap();
 
         assert_eq!(
             normalized.endpoint_url(),
@@ -526,14 +600,33 @@ mod tests {
     }
 
     #[test]
-    fn request_body_contains_sampling_and_response_format() {
+    fn request_body_contains_model_messages_and_response_format() {
         let client = ProviderClient::new(sample_config()).unwrap();
         let body = client.build_request_body(&client.build_probe_request());
 
         assert_eq!(body["model"], json!("gpt-4.1-mini"));
-        assert_eq!(body["temperature"], json!(0.7));
-        assert_eq!(body["top_p"], json!(1.0));
+        assert!(body.get("temperature").is_none());
+        assert!(body.get("top_p").is_none());
         assert_eq!(body["response_format"]["type"], json!("json_object"));
+    }
+
+    #[test]
+    fn models_response_keeps_model_ids_sorted_and_unique() {
+        let response = json!({
+            "data": [
+                { "id": "gpt-4.1-mini", "owned_by": "openai" },
+                { "id": "gpt-4.1" },
+                { "id": "gpt-4.1-mini" },
+                { "object": "model" }
+            ]
+        });
+
+        let models = parse_models_response(&response).unwrap();
+
+        assert_eq!(
+            models,
+            vec!["gpt-4.1".to_string(), "gpt-4.1-mini".to_string()],
+        );
     }
 
     #[test]
