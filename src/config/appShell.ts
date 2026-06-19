@@ -55,7 +55,7 @@ export interface SidebarFooterLink {
 }
 
 export interface SidebarFooterStatus {
-  to: string;
+  to: RouteLocationRaw;
   label: string;
   title: string;
   tone: "ok" | "warn" | "error";

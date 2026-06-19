@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import StatusBadge from "../components/workbench/StatusBadge.vue";
+import { useProviderSettings } from "../composables/useProviderSettings";
 import { useWorkbenchStore } from "../features/workbench/store";
+import type { InputSourceStatus } from "../features/workbench/types";
 import type { InteractionEvent } from "../features/workbench/types";
 import "../styles/page.css";
 import "../styles/workbench.css";
 
 const { danmakuView: view, reviewView, toggleRuntime } = useWorkbenchStore();
+useProviderSettings();
 
 const homeSuggestions = computed(() => reviewView.value.suggestions.slice(0, 3));
 
@@ -32,6 +35,12 @@ function formatEventText(event: InteractionEvent) {
     default:
       return `${event.audienceName} ${event.content}`;
   }
+}
+
+function formatSourceLatency(source: InputSourceStatus) {
+  if (source.latencyLabel) return source.latencyLabel;
+  if (typeof source.latencyMs === "number") return `延迟 ${source.latencyMs}ms`;
+  return "未上报";
 }
 </script>
 
@@ -83,10 +92,11 @@ function formatEventText(event: InteractionEvent) {
               <div class="workbench-list-item__row home-source-row">
                 <span class="workbench-list-item__title">{{ source.label }}</span>
                 <div class="home-source-side">
-                  <span class="workbench-list-item__meta">延迟 {{ source.latencyMs }}ms</span>
+                  <span class="workbench-list-item__meta">{{ formatSourceLatency(source) }}</span>
                   <StatusBadge :label="source.statusLabel" :tone="source.tone" />
                 </div>
               </div>
+              <p class="workbench-list-item__meta home-source-summary">{{ source.summary }}</p>
             </article>
           </div>
         </div>
@@ -295,6 +305,11 @@ function formatEventText(event: InteractionEvent) {
   min-width: 0;
   flex: 0 0 auto;
   flex-wrap: wrap;
+}
+
+.home-source-summary {
+  margin: 0;
+  line-height: 1.45;
 }
 
 .home-queue-item {

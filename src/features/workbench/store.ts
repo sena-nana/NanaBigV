@@ -1,15 +1,18 @@
 import { computed, ref } from "vue";
 import appConfig from "../../../app.config.json";
+import { useProviderStatusSummary } from "../../composables/useProviderSettings";
 import { BIGV_WORKBENCH_SNAPSHOT } from "./mockSnapshot";
 import type {
   BigVWorkbenchSnapshot,
   DanmakuViewModel,
+  InputSourceStatus,
   InteractionEvent,
   RuntimeNotice,
   RuntimeToggleState,
 } from "./types";
 
 const STORAGE_KEY = `${appConfig.storageKeyPrefix}.workbench`;
+const { providerStatusSummary } = useProviderStatusSummary();
 
 function cloneSnapshot<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -133,6 +136,7 @@ function deriveDanmakuView(snapshot: BigVWorkbenchSnapshot): DanmakuViewModel {
   const baseView = snapshot.danmaku;
   const toggles = baseView.toggles;
   const dispatchEnabled = findToggle(toggles, "dispatch")?.enabled !== false;
+  const providerSummary = providerStatusSummary.value;
 
   const liveStatus = dispatchEnabled
     ? {
@@ -149,6 +153,19 @@ function deriveDanmakuView(snapshot: BigVWorkbenchSnapshot): DanmakuViewModel {
         nextActionHint: "自动投递已关闭，新的互动结果不会继续进入渲染队列。",
       };
 
+  const providerSource: InputSourceStatus = {
+    key: "provider",
+    label: "Provider",
+    statusLabel: providerSummary.label,
+    tone: providerSummary.tone,
+    summary: `${providerSummary.detail} ${providerSummary.configSummary}`,
+    latencyLabel: providerSummary.latencyLabel,
+  };
+  const inputSources = [
+    ...baseView.inputSources.filter((source) => source.key !== "provider"),
+    providerSource,
+  ];
+
   const queueStats = baseView.queueStats.map((stat) => {
     if (!isChannelDisabled(stat.type, toggles)) return stat;
     return {
@@ -161,6 +178,7 @@ function deriveDanmakuView(snapshot: BigVWorkbenchSnapshot): DanmakuViewModel {
   return {
     ...baseView,
     liveStatus,
+    inputSources,
     queueStats,
     notices: deriveNotices(baseView),
   };

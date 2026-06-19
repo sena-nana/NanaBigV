@@ -2,13 +2,33 @@ import { fireEvent, render, waitFor, within } from "@testing-library/vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SIDEBAR_CONFIG } from "../src/config/appShell";
+import {
+  resetProviderSettingsStateForTest,
+} from "../src/composables/useProviderSettings";
 import AppShell from "../src/layouts/AppShell.vue";
 
+const loadedProviderConfig = {
+  baseUrl: "https://example.com/v1",
+  apiKey: "sk-app-shell-test",
+  model: "gpt-4.1-mini",
+  temperature: 0.6,
+  topP: 0.9,
+  timeoutSeconds: 45,
+};
+
+const mockInvoke = vi.hoisted(() =>
+  vi.fn<(command: string, payload?: Record<string, unknown>) => Promise<unknown>>(),
+);
 const mockIsMaximized = vi.fn(async () => false);
 const mockOnResized = vi.fn(async () => vi.fn());
 const mockMinimize = vi.fn(async () => undefined);
 const mockToggleMaximize = vi.fn(async () => undefined);
 const mockClose = vi.fn(async () => undefined);
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (command: string, payload?: Record<string, unknown>) =>
+    mockInvoke(command, payload),
+}));
 
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
@@ -96,6 +116,21 @@ function sidebarRowForText(container: HTMLElement, text: string): HTMLElement {
 
 beforeEach(() => {
   localStorage.clear();
+  resetProviderSettingsStateForTest();
+  mockInvoke.mockReset();
+  mockInvoke.mockImplementation(async (command, payload) => {
+    if (command === "load_provider_config") return loadedProviderConfig;
+    if (command === "save_provider_config") return payload?.config ?? loadedProviderConfig;
+    if (command === "test_provider_connection") {
+      return {
+        ok: true,
+        latencyMs: 182,
+        model: loadedProviderConfig.model,
+        message: "已通过 chat/completions 连通性测试",
+      };
+    }
+    throw new Error(`unexpected command: ${command}`);
+  });
   mockIsMaximized.mockClear();
   mockOnResized.mockClear();
   mockMinimize.mockClear();

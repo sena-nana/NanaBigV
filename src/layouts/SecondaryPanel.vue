@@ -9,21 +9,44 @@ import {
   SIDEBAR_NAV,
 } from "../config/appShell";
 import SidebarFooter from "../components/sidebar/SidebarFooter.vue";
+import { useProviderSettings } from "../composables/useProviderSettings";
 import { useWorkbenchStore } from "../features/workbench/store";
 
 const { danmakuView } = useWorkbenchStore();
+const { providerStatusSummary } = useProviderSettings();
 
 const footerStatus = computed(() => {
   const dispatchEnabled = danmakuView.value.toggles.some(
     (toggle) => toggle.key === "dispatch" && toggle.enabled,
   );
   const hasError = danmakuView.value.notices.some((notice) => notice.tone === "error");
+  const providerStatus = providerStatusSummary.value;
+
+  if (providerStatus.tone === "error") {
+    return {
+      ...SIDEBAR_FOOTER_STATUS,
+      to: providerStatus.to,
+      label: "Provider",
+      title: providerStatus.title,
+      tone: "error" as const,
+    };
+  }
+
+  if (providerStatus.tone === "warn" || providerStatus.tone === "info") {
+    return {
+      ...SIDEBAR_FOOTER_STATUS,
+      to: providerStatus.to,
+      label: providerStatus.tone === "info" ? "Provider" : "待测试",
+      title: providerStatus.title,
+      tone: "warn" as const,
+    };
+  }
 
   if (hasError) {
     return {
       ...SIDEBAR_FOOTER_STATUS,
       label: "异常",
-      title: "模拟状态：存在需要处理的异常",
+      title: `模拟状态：存在需要处理的异常 · ${providerStatus.configSummary}`,
       tone: "error" as const,
     };
   }
@@ -32,7 +55,7 @@ const footerStatus = computed(() => {
     return {
       ...SIDEBAR_FOOTER_STATUS,
       label: "暂停",
-      title: "模拟状态：自动投递已暂停",
+      title: `模拟状态：自动投递已暂停 · ${providerStatus.configSummary}`,
       tone: "warn" as const,
     };
   }
@@ -40,7 +63,7 @@ const footerStatus = computed(() => {
   return {
     ...SIDEBAR_FOOTER_STATUS,
     label: "运行",
-    title: "模拟状态：自动投递运行中",
+    title: `模拟状态：自动投递运行中 · ${providerStatus.configSummary}`,
     tone: "ok" as const,
   };
 });

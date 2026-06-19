@@ -30,7 +30,8 @@ export interface InputSourceStatus {
   statusLabel: string;
   tone: StatusTone;
   summary: string;
-  latencyMs: number;
+  latencyMs?: number;
+  latencyLabel?: string;
 }
 
 export interface RuntimeToggleState {
