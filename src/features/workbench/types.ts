@@ -116,7 +116,10 @@ export interface UsageSummary {
 
 export interface UsageSeriesPoint {
   label: string;
-  value: number;
+  inputTokens: number;
+  outputTokens: number;
+  retryWasteTokens: number;
+  estimatedCost: number;
 }
 
 export interface UsageBreakdown {

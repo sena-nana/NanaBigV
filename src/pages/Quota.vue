@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import MiniLineChart from "../components/workbench/MiniLineChart.vue";
+import { computed, ref } from "vue";
+import UsageTrendChart from "../components/workbench/UsageTrendChart.vue";
 import { APP_METADATA } from "../config/appShell";
 import { usePersistentString } from "../composables/usePersistentState";
 import { useWorkbenchStore } from "../features/workbench/store";
-import type { UsageWindowKey } from "../features/workbench/types";
+import type { UsageBreakdown, UsageWindowKey } from "../features/workbench/types";
 import "../styles/page.css";
 import "../styles/workbench.css";
 
@@ -19,19 +19,87 @@ const currentWindowData = computed(() => view.value.windowData[activeWindow.valu
 const currentWindowLabel = computed(
   () => view.value.windows.find((item) => item.key === activeWindow.value)?.label ?? "",
 );
+type ConsumptionGroupId = "model" | "capability" | "subsystem";
+
+const quotaMetrics = computed(() => [
+  {
+    id: "requests",
+    label: "请求",
+    value: currentWindowData.value.summary.requestCount.toLocaleString(),
+  },
+  {
+    id: "input",
+    label: "输入",
+    value: currentWindowData.value.summary.inputTokens.toLocaleString(),
+  },
+  {
+    id: "output",
+    label: "输出",
+    value: currentWindowData.value.summary.outputTokens.toLocaleString(),
+  },
+  {
+    id: "cost",
+    label: "成本",
+    value: `¥${currentWindowData.value.summary.estimatedCost.toFixed(2)}`,
+  },
+  {
+    id: "retry",
+    label: "失败重试",
+    value: currentWindowData.value.summary.retryWasteTokens.toLocaleString(),
+  },
+]);
+const consumptionGroups = computed<Array<{
+  id: ConsumptionGroupId;
+  tabLabel: string;
+  rows: UsageBreakdown[];
+  valueMode: "tokens" | "percent";
+}>>(() => [
+  {
+    id: "model",
+    tabLabel: "模型统计",
+    rows: currentWindowData.value.byModel,
+    valueMode: "tokens",
+  },
+  {
+    id: "capability",
+    tabLabel: "能力统计",
+    rows: currentWindowData.value.byCapability,
+    valueMode: "tokens",
+  },
+  {
+    id: "subsystem",
+    tabLabel: "子系统统计",
+    rows: currentWindowData.value.bySubsystem,
+    valueMode: "percent",
+  },
+]);
+const activeConsumptionGroupId = ref<ConsumptionGroupId>("model");
+const activeConsumptionGroup = computed(
+  () =>
+    consumptionGroups.value.find((group) => group.id === activeConsumptionGroupId.value) ??
+    consumptionGroups.value[0]!,
+);
 
 function setWindow(next: UsageWindowKey) {
   activeWindow.value = next;
 }
 
+function setConsumptionGroup(next: ConsumptionGroupId) {
+  activeConsumptionGroupId.value = next;
+}
+
 function percentLabel(share: number) {
   return `${share}%`;
+}
+
+function formatBreakdownValue(row: UsageBreakdown, mode: "tokens" | "percent") {
+  return mode === "tokens" ? row.value.toLocaleString() : percentLabel(row.share);
 }
 </script>
 
 <template>
-  <section class="workbench-page">
-    <div class="page-header">
+  <section class="workbench-page workbench-page--fill quota-page">
+    <div class="page-header quota-page__header">
       <h1>额度检查</h1>
       <div class="workbench-segmented" role="tablist" aria-label="额度时间窗">
         <button
@@ -47,89 +115,68 @@ function percentLabel(share: number) {
       </div>
     </div>
 
-    <div class="workbench-main-grid">
-      <div class="workbench-stack">
-        <div class="card">
-          <div class="workbench-card-head">
+    <div class="quota-page__scroll">
+      <div class="quota-overview" aria-label="额度概览">
+        <article v-for="metric in quotaMetrics" :key="metric.id" class="quota-metric">
+          <span>{{ metric.label }}</span>
+          <strong>{{ metric.value }}</strong>
+        </article>
+      </div>
+
+      <div class="quota-layout">
+        <div class="card quota-trend-card">
+          <div class="workbench-card-head quota-card-head">
             <h2>{{ currentWindowLabel }}趋势</h2>
+            <span>Token 使用</span>
           </div>
-          <ul class="workbench-kv workbench-kv--grid">
-            <li>
-              <span>请求</span>
-              <strong>{{ currentWindowData.summary.requestCount }}</strong>
-            </li>
-            <li>
-              <span>输入</span>
-              <strong>{{ currentWindowData.summary.inputTokens.toLocaleString() }}</strong>
-            </li>
-            <li>
-              <span>输出</span>
-              <strong>{{ currentWindowData.summary.outputTokens.toLocaleString() }}</strong>
-            </li>
-            <li>
-              <span>成本</span>
-              <strong>¥{{ currentWindowData.summary.estimatedCost.toFixed(2) }}</strong>
-            </li>
-          </ul>
-          <MiniLineChart
+          <UsageTrendChart
             :title="`${currentWindowLabel} token 使用趋势`"
             :series="currentWindowData.trend"
           />
         </div>
 
-        <div class="card">
-          <h2>模型拆分</h2>
-          <div class="workbench-chart-bars">
-            <div
-              v-for="row in currentWindowData.byModel"
-              :key="row.id"
-              class="workbench-chart-row"
-            >
-              <div class="workbench-chart-label">{{ row.label }}</div>
-              <div class="workbench-chart-track">
-                <div class="workbench-chart-fill" :class="`is-${row.tone}`" :style="{ width: percentLabel(row.share) }" />
-              </div>
-              <div class="workbench-chart-value">{{ row.value.toLocaleString() }}</div>
-            </div>
+        <div class="card quota-stats-card">
+          <div class="workbench-card-head quota-card-head">
+            <h2>统计</h2>
+            <span>{{ currentWindowLabel }}</span>
           </div>
-        </div>
-
-        <div class="card">
-          <h2>能力消耗拆分</h2>
-          <div class="workbench-chart-bars">
-            <div
-              v-for="row in currentWindowData.byCapability"
-              :key="row.id"
-              class="workbench-chart-row"
+          <div class="workbench-segmented quota-stats-tabs" role="tablist" aria-label="额度统计类别">
+            <button
+              v-for="group in consumptionGroups"
+              :key="group.id"
+              type="button"
+              :class="{ 'is-active': activeConsumptionGroup.id === group.id }"
+              :aria-pressed="activeConsumptionGroup.id === group.id"
+              @click="setConsumptionGroup(group.id)"
             >
-              <div class="workbench-chart-label">{{ row.label }}</div>
-              <div class="workbench-chart-track">
-                <div class="workbench-chart-fill" :class="`is-${row.tone}`" :style="{ width: percentLabel(row.share) }" />
-              </div>
-              <div class="workbench-chart-value">{{ percentLabel(row.share) }}</div>
-            </div>
+              {{ group.tabLabel }}
+            </button>
           </div>
-        </div>
-      </div>
-
-      <div class="workbench-stack">
-        <div class="card">
-          <h2>子系统消耗</h2>
-          <div class="workbench-list">
-            <article
-              v-for="row in currentWindowData.bySubsystem"
-              :key="row.id"
-              class="workbench-list-item"
-            >
-              <div class="workbench-list-item__row">
-                <span class="workbench-list-item__title">{{ row.label }}</span>
-                <span class="workbench-list-item__meta">{{ percentLabel(row.share) }}</span>
-              </div>
-              <div class="workbench-chart-track">
-                <div class="workbench-chart-fill" :class="`is-${row.tone}`" :style="{ width: percentLabel(row.share) }" />
-              </div>
-              <div class="workbench-list-item__meta">{{ row.helperText }}</div>
-            </article>
+          <div class="quota-stats-table-wrap">
+            <table class="quota-stats-table">
+              <caption>{{ activeConsumptionGroup.tabLabel }}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">名称</th>
+                  <th scope="col">数值</th>
+                  <th scope="col">占比</th>
+                  <th scope="col">说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in activeConsumptionGroup.rows" :key="`${activeConsumptionGroup.id}-${row.id}`">
+                  <th scope="row">
+                    <span class="quota-stats-table__name">
+                      <span class="quota-stats-table__swatch" :class="`is-${row.tone}`" />
+                      {{ row.label }}
+                    </span>
+                  </th>
+                  <td>{{ formatBreakdownValue(row, activeConsumptionGroup.valueMode) }}</td>
+                  <td>{{ percentLabel(row.share) }}</td>
+                  <td>{{ row.helperText ?? "无" }}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
