@@ -42,28 +42,27 @@ export const BIGV_WORKBENCH_SNAPSHOT: BigVWorkbenchSnapshot = {
       {
         key: "voice",
         label: "主播语音",
-        statusLabel: "主链路在线",
-        tone: "ok",
-        summary: "最近 30 秒持续有文本输入，是当前主要上下文来源。",
-        latencyMs: 420,
+        statusLabel: "待输入",
+        tone: "info",
+        summary: "等待本地 ASR 或手动面板提交主播语音文本。",
       },
       {
         key: "echo-live",
         label: "Echo-Live",
-        statusLabel: "增强待机",
-        tone: "warn",
-        summary: "已预留输入适配，但当前仅模拟摘要信号。",
-        latencyMs: 980,
+        statusLabel: "预留接口",
+        tone: "info",
+        summary: "Echo-Live 输入适配器已预留，阶段 3 不接入真实事件。",
       },
       {
         key: "vision",
         label: "视觉上下文",
-        statusLabel: "摘要降级",
-        tone: "warn",
-        summary: "仅接收结构化摘要，最近一轮识别置信度偏低。",
-        latencyMs: 1380,
+        statusLabel: "预留接口",
+        tone: "info",
+        summary: "视觉摘要输入接口已预留，阶段 3 不处理原始视频流。",
       },
     ],
+    contextEvents: [],
+    contextWindowSeconds: 300,
     toggles: [
       {
         key: "dispatch",
@@ -137,12 +136,6 @@ export const BIGV_WORKBENCH_SNAPSHOT: BigVWorkbenchSnapshot = {
       },
     ],
     notices: [
-      {
-        id: "notice-1",
-        title: "视觉摘要置信度偏低",
-        detail: "最近 3 轮视觉摘要出现信息重复，建议暂时降低其对互动强度的影响。",
-        tone: "warn",
-      },
       {
         id: "notice-2",
         title: "SC 通道关闭",

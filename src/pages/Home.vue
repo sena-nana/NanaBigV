@@ -1,17 +1,30 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onMounted, ref } from "vue";
+import { Send, Trash2 } from "@lucide/vue";
 import StatusBadge from "../components/workbench/StatusBadge.vue";
 import { useProviderSettings } from "../composables/useProviderSettings";
 import { useWorkbenchStore } from "../features/workbench/store";
+import type { ContextEvent, ContextSourceKind } from "../features/context/types";
 import type { InputSourceStatus } from "../features/workbench/types";
 import type { InteractionEvent } from "../features/workbench/types";
 import "../styles/page.css";
 import "../styles/workbench.css";
 
-const { danmakuView: view, reviewView, toggleRuntime } = useWorkbenchStore();
+const {
+  danmakuView: view,
+  reviewView,
+  contextLoading,
+  contextError,
+  refreshContextWindow,
+  submitVoiceContext,
+  clearWorkbenchContextWindow,
+  toggleRuntime,
+} = useWorkbenchStore();
 useProviderSettings();
 
+const voiceDraft = ref("");
 const homeSuggestions = computed(() => reviewView.value.suggestions.slice(0, 3));
+const canSubmitVoice = computed(() => voiceDraft.value.trim().length > 0 && !contextLoading.value);
 
 const interactionTypeLabels: Record<InteractionEvent["type"], string> = {
   danmaku: "弹幕",
@@ -19,6 +32,16 @@ const interactionTypeLabels: Record<InteractionEvent["type"], string> = {
   super_chat: "SC",
   membership: "舰长",
 };
+
+const contextSourceLabels: Record<ContextSourceKind, string> = {
+  voice: "主播语音",
+  echo_live: "Echo-Live",
+  vision: "视觉",
+};
+
+onMounted(() => {
+  void refreshContextWindow();
+});
 
 function suggestionTone(priority: string) {
   return priority.includes("高") ? "warn" : "info";
@@ -40,7 +63,32 @@ function formatEventText(event: InteractionEvent) {
 function formatSourceLatency(source: InputSourceStatus) {
   if (source.latencyLabel) return source.latencyLabel;
   if (typeof source.latencyMs === "number") return `延迟 ${source.latencyMs}ms`;
-  return "未上报";
+  if (source.lastEventAt) return `最近 ${formatTimestamp(source.lastEventAt)}`;
+  if (typeof source.eventCount === "number") return `${source.eventCount} 条`;
+  return "无事件";
+}
+
+function formatTimestamp(value: number) {
+  return new Date(value).toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function formatContextMeta(event: ContextEvent) {
+  const label = contextSourceLabels[event.source];
+  return `${label} · ${formatTimestamp(event.receivedAt)}`;
+}
+
+async function submitVoiceDraft() {
+  const content = voiceDraft.value.trim();
+  if (!content) return;
+  if (await submitVoiceContext(content)) voiceDraft.value = "";
+}
+
+async function clearContextEvents() {
+  await clearWorkbenchContextWindow();
 }
 </script>
 
@@ -124,18 +172,90 @@ function formatSourceLatency(source: InputSourceStatus) {
         <div class="card home-feed-shell">
           <p class="home-feed-hint">{{ view.liveStatus.nextActionHint }}</p>
 
-          <div class="home-feed-events">
-            <div class="home-feed-stream">
-              <div
-                v-for="event in view.recentEvents"
-                :key="event.id"
-                class="home-feed-event"
-              >
-                <span class="home-feed-event__type">{{ interactionTypeLabels[event.type] }}</span>
-                <span class="home-feed-event__text">{{ formatEventText(event) }}</span>
+          <section class="home-context-panel" aria-labelledby="voice-input-title">
+            <div class="home-section-head">
+              <div>
+                <h2 id="voice-input-title">主播语音文本</h2>
+                <p>{{ view.contextEvents.length }} 条 / 最近 {{ view.contextWindowSeconds }} 秒</p>
+              </div>
+              <StatusBadge
+                :label="contextLoading ? '同步中' : '本地接入口'"
+                :tone="contextLoading ? 'info' : 'ok'"
+              />
+            </div>
+
+            <form class="home-voice-form" @submit.prevent="submitVoiceDraft">
+              <label class="home-voice-label" for="voice-text">主播语音文本</label>
+              <textarea
+                id="voice-text"
+                v-model="voiceDraft"
+                class="home-voice-textarea"
+                rows="4"
+                placeholder="粘贴或输入本地 ASR 已转写的主播语音文本"
+                :disabled="contextLoading"
+              />
+              <div class="home-voice-actions">
+                <button class="button-primary home-action-button" type="submit" :disabled="!canSubmitVoice">
+                  <Send :size="15" aria-hidden="true" />
+                  <span>提交语音</span>
+                </button>
+                <button
+                  class="button-secondary home-action-button"
+                  type="button"
+                  :disabled="contextLoading || view.contextEvents.length === 0"
+                  @click="clearContextEvents"
+                >
+                  <Trash2 :size="15" aria-hidden="true" />
+                  <span>清空窗口</span>
+                </button>
+              </div>
+              <p v-if="contextError" class="home-context-error" role="alert">{{ contextError }}</p>
+            </form>
+          </section>
+
+          <section class="home-context-panel home-context-panel--events" aria-labelledby="context-events-title">
+            <div class="home-section-head">
+              <div>
+                <h2 id="context-events-title">最近上下文事件</h2>
+                <p>主播语音优先，Echo-Live 和视觉仅预留挂接口</p>
               </div>
             </div>
-          </div>
+
+            <div v-if="view.contextEvents.length" class="home-context-list">
+              <article
+                v-for="event in view.contextEvents"
+                :key="event.id"
+                class="home-context-event"
+              >
+                <span class="home-context-event__meta">{{ formatContextMeta(event) }}</span>
+                <strong>{{ event.summary }}</strong>
+                <p>{{ event.content }}</p>
+              </article>
+            </div>
+            <p v-else class="home-empty-state">等待主播语音文本输入。</p>
+          </section>
+
+          <section class="home-output-panel" aria-labelledby="output-events-title">
+            <div class="home-section-head">
+              <div>
+                <h2 id="output-events-title">模拟互动输出</h2>
+                <p>阶段 3 仍保留现有模拟投递数据</p>
+              </div>
+            </div>
+
+            <div class="home-feed-events">
+              <div class="home-feed-stream">
+                <div
+                  v-for="event in view.recentEvents"
+                  :key="event.id"
+                  class="home-feed-event"
+                >
+                  <span class="home-feed-event__type">{{ interactionTypeLabels[event.type] }}</span>
+                  <span class="home-feed-event__text">{{ formatEventText(event) }}</span>
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -175,7 +295,7 @@ function formatSourceLatency(source: InputSourceStatus) {
   height: 100%;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto minmax(160px, 0.8fr) minmax(180px, 1fr);
   gap: 12px;
 }
 
@@ -195,6 +315,169 @@ function formatSourceLatency(source: InputSourceStatus) {
   overflow: auto;
   padding-right: 4px;
   display: flex;
+}
+
+.home-context-panel,
+.home-output-panel {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+}
+
+.home-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.home-section-head h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.home-section-head p {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.home-voice-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.home-voice-label {
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  clip: rect(0 0 0 0);
+}
+
+.home-voice-textarea {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.home-voice-textarea:focus {
+  outline: 2px solid var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.home-voice-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.home-action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.button-primary {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.button-secondary {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.home-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.home-context-error {
+  margin: 0;
+  color: var(--err);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.home-context-panel--events {
+  overflow: hidden;
+}
+
+.home-context-list {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-right: 4px;
+}
+
+.home-context-event {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+
+.home-context-event__meta {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.home-context-event strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.home-context-event p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.home-empty-state {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.home-output-panel {
+  overflow: hidden;
 }
 
 .home-feed-stream {
@@ -355,6 +638,7 @@ function formatSourceLatency(source: InputSourceStatus) {
 
   .home-feed-shell {
     height: auto;
+    grid-template-rows: auto;
   }
 
   .home-feed-events {
