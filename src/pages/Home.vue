@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { Send, Trash2 } from "@lucide/vue";
 import StatusBadge from "../components/workbench/StatusBadge.vue";
+import ToggleSwitch from "../components/ToggleSwitch.vue";
 import { useProviderSettings } from "../composables/useProviderSettings";
 import { useWorkbenchStore } from "../features/workbench/store";
 import type { ContextEvent, ContextSourceKind } from "../features/context/types";
@@ -108,24 +109,22 @@ async function clearContextEvents() {
   <section class="workbench-page workbench-page--fill home-page">
     <div class="home-layout">
       <div class="home-column home-column--sidebar">
-        <div class="card home-sidebar-card">
-          <div class="toggle-list">
-            <label
-              v-for="toggle in view.toggles"
-              :key="toggle.key"
-              class="toggle-card"
-            >
-              <span class="toggle-card__title">{{ toggle.label }}</span>
-              <input
-                class="toggle-card__checkbox"
-                type="checkbox"
-                :checked="toggle.enabled"
-                :aria-label="toggle.label"
-                @change="toggleRuntime(toggle.key)"
+          <div class="card home-sidebar-card">
+            <div class="toggle-list">
+              <div
+                v-for="toggle in view.toggles"
+                :key="toggle.key"
+                class="toggle-card"
               >
-            </label>
+                <span class="toggle-card__title">{{ toggle.label }}</span>
+                <ToggleSwitch
+                  :model-value="toggle.enabled"
+                  :aria-label="toggle.label"
+                  @update:model-value="() => toggleRuntime(toggle.key)"
+                />
+              </div>
+            </div>
           </div>
-        </div>
 
         <div class="card home-sidebar-card">
           <div class="workbench-list">
@@ -676,12 +675,6 @@ async function clearContextEvents() {
   flex: 1;
   font-size: 13px;
   font-weight: 600;
-}
-
-.toggle-card__checkbox {
-  flex: 0 0 auto;
-  margin: 0;
-  accent-color: var(--accent);
 }
 
 .home-source-row {
