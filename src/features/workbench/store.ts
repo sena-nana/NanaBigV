@@ -10,6 +10,11 @@ import {
   createLocalBlivechatQueue,
   type BlivechatEventInput,
 } from "./eventRuntime";
+import {
+  createInitialMockSourceStatus,
+  isMockInteractionDeliverable,
+  WorkbenchMockDataSource,
+} from "./mockDataSource";
 import { BIGV_WORKBENCH_SNAPSHOT } from "./mockSnapshot";
 import type { ContextWindowSnapshot } from "../context/types";
 import type {
@@ -17,6 +22,7 @@ import type {
   DanmakuViewModel,
   InputSourceStatus,
   InteractionEvent,
+  MockSourceRecord,
   RuntimeNotice,
   RuntimeToggleState,
 } from "./types";
@@ -58,7 +64,9 @@ const EMPTY_CONTEXT_WINDOW: ContextWindowSnapshot = {
 const contextWindow = ref<ContextWindowSnapshot>(structuredClone(EMPTY_CONTEXT_WINDOW));
 const contextLoading = ref(false);
 const contextError = ref<string | null>(null);
-const localInteractionSeed: BlivechatEventInput[] = [
+const mockSourceStatus = ref(createInitialMockSourceStatus());
+const mockSourceRecords = ref<MockSourceRecord[]>([]);
+const baselineInteractionSeed: BlivechatEventInput[] = [
   {
     type: "danmaku",
     audienceName: "阿黎",
@@ -154,12 +162,7 @@ function findToggle(toggles: RuntimeToggleState[], key: string): RuntimeToggleSt
 }
 
 function isChannelDisabled(type: InteractionEvent["type"], toggles: RuntimeToggleState[]) {
-  const dispatchEnabled = findToggle(toggles, "dispatch")?.enabled !== false;
-  if (!dispatchEnabled) return true;
-  if ((type === "gift" || type === "membership") && findToggle(toggles, "gifts")?.enabled === false) {
-    return true;
-  }
-  return type === "super_chat" && findToggle(toggles, "super-chat")?.enabled === false;
+  return !isMockInteractionDeliverable(type, toggles);
 }
 
 function deriveNotices(view: DanmakuViewModel): RuntimeNotice[] {
@@ -266,6 +269,8 @@ function deriveDanmakuView(snapshot: BigVWorkbenchSnapshot): DanmakuViewModel {
     contextWindowSeconds: contextWindow.value.windowSeconds,
     queueStats: queueSnapshot.stats,
     recentEvents: queueSnapshot.recentEvents,
+    mockSource: mockSourceStatus.value,
+    mockSourceRecords: mockSourceRecords.value,
     notices: deriveNotices(baseView),
   };
 }
@@ -277,6 +282,20 @@ localEventQueue.onSnapshot((next) => {
   localEventQueueSnapshot.value = next;
 });
 seedLocalEventQueue(snapshot.value.danmaku.toggles);
+const mockDataSource = new WorkbenchMockDataSource({
+  queue: localEventQueue,
+  submitContextEvent,
+  updateContextWindow(next) {
+    contextWindow.value = next;
+  },
+  canDeliverInteraction(type) {
+    return isMockInteractionDeliverable(type, snapshot.value.danmaku.toggles);
+  },
+  onChange(status, records) {
+    mockSourceStatus.value = status;
+    mockSourceRecords.value = records;
+  },
+});
 
 function replaceSnapshot(next: BigVWorkbenchSnapshot) {
   snapshot.value = next;
@@ -299,7 +318,7 @@ function toggleRuntime(key: string) {
 
 function seedLocalEventQueue(toggles: RuntimeToggleState[]) {
   const startedAt = Date.now() - 24_000;
-  for (const [index, event] of localInteractionSeed.entries()) {
+  for (const [index, event] of baselineInteractionSeed.entries()) {
     localEventQueue.enqueue(event, startedAt + index * 4_000);
     if (index < 3) {
       localEventQueue.deliverNext(
@@ -372,5 +391,9 @@ export function useWorkbenchStore() {
     submitVoiceContext,
     clearWorkbenchContextWindow,
     toggleRuntime,
+    startMockSource: () => mockDataSource.start(),
+    pauseMockSource: () => mockDataSource.pause(),
+    stepMockSource: () => mockDataSource.step(),
+    resetMockSource: () => mockDataSource.reset(),
   };
 }

@@ -133,6 +133,14 @@ export class BlivechatEventQueue {
     return throttled;
   }
 
+  reset() {
+    this.pending = [];
+    this.records = [];
+    this.nextEventSeq = 0;
+    this.nextRecordSeq = 0;
+    this.emitSnapshot();
+  }
+
   snapshot(): BlivechatQueueSnapshot {
     const records = this.records.slice(0, 80);
     return {

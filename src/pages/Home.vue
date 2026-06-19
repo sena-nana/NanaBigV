@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { Send, Trash2 } from "@lucide/vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import { Pause, Play, RotateCcw, Send, SkipForward, Trash2 } from "@lucide/vue";
 import StatusBadge from "../components/workbench/StatusBadge.vue";
 import { useProviderSettings } from "../composables/useProviderSettings";
 import { useWorkbenchStore } from "../features/workbench/store";
@@ -19,12 +19,27 @@ const {
   submitVoiceContext,
   clearWorkbenchContextWindow,
   toggleRuntime,
+  startMockSource,
+  pauseMockSource,
+  stepMockSource,
+  resetMockSource,
 } = useWorkbenchStore();
 useProviderSettings();
 
 const voiceDraft = ref("");
 const homeSuggestions = computed(() => reviewView.value.suggestions.slice(0, 3));
 const canSubmitVoice = computed(() => voiceDraft.value.trim().length > 0 && !contextLoading.value);
+const mockSourceRunning = computed(() => view.value.mockSource.state === "running");
+const mockSourceStateMeta = computed(() => {
+  const state = view.value.mockSource.state;
+  return {
+    idle: { label: "待启动", tone: "info" },
+    running: { label: "运行中", tone: "ok" },
+    paused: { label: "已暂停", tone: "warn" },
+    error: { label: "异常", tone: "error" },
+  }[state] as { label: string; tone: "ok" | "warn" | "error" | "info" };
+});
+const mockSourceLastEvent = computed(() => view.value.mockSource.lastEventLabel ?? "等待手动启动 mock 数据源");
 
 const interactionTypeLabels: Record<InteractionEvent["type"], string> = {
   danmaku: "弹幕",
@@ -41,6 +56,10 @@ const contextSourceLabels: Record<ContextSourceKind, string> = {
 
 onMounted(() => {
   void refreshContextWindow();
+});
+
+onUnmounted(() => {
+  if (mockSourceRunning.value) pauseMockSource();
 });
 
 function suggestionTone(priority: string) {
@@ -89,6 +108,10 @@ async function submitVoiceDraft() {
 
 async function clearContextEvents() {
   await clearWorkbenchContextWindow();
+}
+
+function toggleMockSourceLoop() {
+  mockSourceRunning.value ? pauseMockSource() : startMockSource();
 }
 </script>
 
@@ -240,6 +263,57 @@ async function clearContextEvents() {
               <div>
                 <h2 id="output-events-title">模拟互动输出</h2>
                 <p>本地 blivechat 队列记录 enqueue / deliver / throttle</p>
+              </div>
+              <StatusBadge :label="mockSourceStateMeta.label" :tone="mockSourceStateMeta.tone" />
+            </div>
+
+            <div class="home-mock-source">
+              <div class="home-mock-source__meta">
+                <strong>{{ view.mockSource.scenarioLabel }}</strong>
+                <span>{{ view.mockSource.tickCount }} 次 · {{ view.mockSource.intervalMs }}ms</span>
+                <span>{{ mockSourceLastEvent }}</span>
+                <span v-if="view.mockSource.error" class="home-context-error">{{ view.mockSource.error }}</span>
+              </div>
+              <div class="home-mock-source__actions" aria-label="mock 数据源控制">
+                <button
+                  class="button-secondary home-action-button"
+                  type="button"
+                  @click="toggleMockSourceLoop"
+                >
+                  <Pause v-if="mockSourceRunning" :size="15" aria-hidden="true" />
+                  <Play v-else :size="15" aria-hidden="true" />
+                  <span>{{ mockSourceRunning ? "暂停" : "启动" }}</span>
+                </button>
+                <button
+                  class="button-secondary home-action-button"
+                  type="button"
+                  :disabled="mockSourceRunning"
+                  @click="stepMockSource"
+                >
+                  <SkipForward :size="15" aria-hidden="true" />
+                  <span>单步</span>
+                </button>
+                <button
+                  class="button-secondary home-action-button"
+                  type="button"
+                  @click="resetMockSource"
+                >
+                  <RotateCcw :size="15" aria-hidden="true" />
+                  <span>重置</span>
+                </button>
+              </div>
+            </div>
+
+            <div v-if="view.mockSourceRecords.length" class="home-mock-records">
+              <div
+                v-for="record in view.mockSourceRecords.slice(0, 3)"
+                :key="record.id"
+                class="home-mock-record"
+              >
+                <span>{{ record.happenedAt }}</span>
+                <strong>{{ record.frameLabel }}</strong>
+                <span>{{ [...record.contextLabels, ...record.interactionLabels].join(" / ") }}</span>
+                <StatusBadge :label="record.statusLabel" :tone="record.tone" />
               </div>
             </div>
 
@@ -482,6 +556,77 @@ async function clearContextEvents() {
   overflow: hidden;
 }
 
+.home-mock-source {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+
+.home-mock-source__meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.home-mock-source__meta strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.home-mock-source__meta span {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.home-mock-source__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+.home-mock-records {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.home-mock-record {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.home-mock-record strong {
+  flex: 0 0 auto;
+  color: var(--text);
+}
+
+.home-mock-record span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-mock-record :deep(.status-badge) {
+  flex: 0 0 auto;
+}
+
 .home-feed-stream {
   min-height: 100%;
   width: 100%;
@@ -656,6 +801,15 @@ async function clearContextEvents() {
   .home-feed-events {
     overflow: visible;
     padding-right: 0;
+  }
+
+  .home-mock-source {
+    flex-direction: column;
+  }
+
+  .home-mock-source__actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 
