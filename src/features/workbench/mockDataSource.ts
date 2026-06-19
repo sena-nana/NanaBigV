@@ -1,6 +1,12 @@
 import type { ContextEventInput, ContextSourceKind, ContextWindowSnapshot } from "../context/types";
-import type { BlivechatEventInput, BlivechatEventQueue } from "./eventRuntime";
+import type { MemoryStoreSnapshot } from "../memory/types";
+import {
+  AudiencePlanner,
+  createInitialAudienceSimulationStatus,
+} from "./audiencePlanner";
+import type { BlivechatEventQueue } from "./eventRuntime";
 import type {
+  AudienceSimulationStatus,
   InteractionType,
   MockSourceRecord,
   MockSourceStatus,
@@ -14,7 +20,6 @@ interface MockDataFrame {
   id: string;
   label: string;
   contextEvents: ContextEventInput[];
-  interactionEvents: BlivechatEventInput[];
 }
 
 interface MockDataScenario {
@@ -28,7 +33,9 @@ interface WorkbenchMockDataSourceOptions {
   submitContextEvent: (event: ContextEventInput) => Promise<ContextWindowSnapshot>;
   updateContextWindow: (snapshot: ContextWindowSnapshot) => void;
   canDeliverInteraction: (type: InteractionType) => boolean;
+  getMemorySnapshot?: () => MemoryStoreSnapshot | null;
   onChange: (status: MockSourceStatus, records: MockSourceRecord[]) => void;
+  onSimulationStatusChange?: (status: AudienceSimulationStatus) => void;
   now?: () => number;
 }
 
@@ -60,13 +67,6 @@ const DEFAULT_SCENARIO: MockDataScenario = {
           confidence: 0.94,
         },
       ],
-      interactionEvents: [
-        {
-          type: "danmaku",
-          audienceName: "阿黎",
-          content: "这个开场节奏挺稳，可以先把新关卡机制讲清楚。",
-        },
-      ],
     },
     {
       id: "echo-live-pulse",
@@ -77,14 +77,6 @@ const DEFAULT_SCENARIO: MockDataScenario = {
           content: "Echo-Live 捕获到外部场控提示：当前评论区集中讨论隐藏路线。",
           summary: "外部场控提示隐藏路线",
           confidence: 0.82,
-        },
-      ],
-      interactionEvents: [
-        {
-          type: "gift",
-          audienceName: "北街舟",
-          content: "送出荧光棒 x2，想看主播试隐藏路线。",
-          amountLabel: "¥20",
         },
       ],
     },
@@ -99,14 +91,6 @@ const DEFAULT_SCENARIO: MockDataScenario = {
           confidence: 0.76,
         },
       ],
-      interactionEvents: [
-        {
-          type: "super_chat",
-          audienceName: "糖霜六号",
-          content: "建议下一段切回剧情点评，不要一直卡在设置界面。",
-          amountLabel: "¥30",
-        },
-      ],
     },
     {
       id: "membership-entry",
@@ -117,13 +101,6 @@ const DEFAULT_SCENARIO: MockDataScenario = {
           content: "主播回应弹幕说会先打一局完整流程，再整理刚才的路线建议。",
           summary: "主播承诺先打一局完整流程",
           confidence: 0.91,
-        },
-      ],
-      interactionEvents: [
-        {
-          type: "membership",
-          audienceName: "镜岛",
-          content: "触发舰长入场欢迎，等待本地投递队列放行。",
         },
       ],
     },
@@ -150,7 +127,9 @@ export function isMockInteractionDeliverable(type: InteractionType, toggles: Run
 
 export class WorkbenchMockDataSource {
   private readonly scenario = DEFAULT_SCENARIO;
+  private readonly planner = new AudiencePlanner();
   private status = createInitialMockSourceStatus();
+  private simulationStatus = createInitialAudienceSimulationStatus();
   private records: MockSourceRecord[] = [];
   private timer: number | null = null;
   private frameIndex = 0;
@@ -189,6 +168,7 @@ export class WorkbenchMockDataSource {
     const frame = this.scenario.frames[this.frameIndex];
     this.frameIndex = (this.frameIndex + 1) % this.scenario.frames.length;
     this.contextInFlight = true;
+    let contextSnapshot: ContextWindowSnapshot | null = null;
 
     try {
       for (const event of frame.contextEvents) {
@@ -197,10 +177,22 @@ export class WorkbenchMockDataSource {
           occurredAt: event.occurredAt ?? this.now(),
         });
         this.options.updateContextWindow(snapshot);
+        contextSnapshot = snapshot;
       }
 
+      if (!contextSnapshot) {
+        throw new Error("mock 数据源缺少上下文快照");
+      }
+      const plan = this.planner.plan({
+        contextWindow: contextSnapshot,
+        memorySnapshot: this.options.getMemorySnapshot?.(),
+        queueSnapshot: this.options.queue.snapshot(),
+        now: this.now(),
+      });
+      this.simulationStatus = plan.status;
+
       const interactionLabels: string[] = [];
-      for (const [index, event] of frame.interactionEvents.entries()) {
+      for (const [index, event] of plan.events.entries()) {
         const happenedAt = this.now() + index * 150;
         this.options.queue.enqueue(event, happenedAt);
         this.options.queue.deliverNext(
@@ -266,6 +258,7 @@ export class WorkbenchMockDataSource {
 
   private notify() {
     this.options.onChange({ ...this.status }, this.records.map((record) => ({ ...record })));
+    this.options.onSimulationStatusChange?.({ ...this.simulationStatus });
   }
 
   private now() {

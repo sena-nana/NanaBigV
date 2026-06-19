@@ -7,7 +7,7 @@ import ToggleSwitch from "../components/ToggleSwitch.vue";
 import { useProviderSettings } from "../composables/useProviderSettings";
 import { useWorkbenchStore } from "../features/workbench/store";
 import type { ContextEvent, ContextSourceKind } from "../features/context/types";
-import type { InputSourceStatus } from "../features/workbench/types";
+import type { AudienceSimulationStatus, InputSourceStatus } from "../features/workbench/types";
 import "../styles/page.css";
 import "../styles/workbench.css";
 
@@ -26,6 +26,27 @@ useProviderSettings();
 const voiceDraft = ref("");
 const homeSuggestions = computed(() => reviewView.value.suggestions.slice(0, 3));
 const canSubmitVoice = computed(() => voiceDraft.value.trim().length > 0 && !contextLoading.value);
+const SIMULATION_METRIC_FIELDS: Array<{
+  label: string;
+  key: keyof Pick<
+    AudienceSimulationStatus,
+    | "activeAudienceCount"
+    | "plannedIntentCount"
+    | "llmBatchCallCount"
+    | "localGeneratedCount"
+    | "cooldownRejectCount"
+    | "throttleRejectCount"
+    | "budgetRejectCount"
+  >;
+}> = [
+  { label: "激活", key: "activeAudienceCount" },
+  { label: "计划", key: "plannedIntentCount" },
+  { label: "批量", key: "llmBatchCallCount" },
+  { label: "本地", key: "localGeneratedCount" },
+  { label: "冷却", key: "cooldownRejectCount" },
+  { label: "节流", key: "throttleRejectCount" },
+  { label: "预算", key: "budgetRejectCount" },
+];
 
 const mockSourceStateMeta = computed(() => {
   const state = view.value.mockSource.state;
@@ -37,6 +58,13 @@ const mockSourceStateMeta = computed(() => {
   }[state] as { label: string; tone: "ok" | "warn" | "error" | "info" };
 });
 const mockSourceLastEvent = computed(() => view.value.mockSource.lastEventLabel ?? "Mock 数据源未启用，请到设置开启 Debug");
+const simulationMetrics = computed(() => {
+  const status = view.value.simulationStatus;
+  return SIMULATION_METRIC_FIELDS.map((metric) => ({
+    label: metric.label,
+    value: status[metric.key],
+  }));
+});
 
 const contextSourceLabels: Record<ContextSourceKind, string> = {
   voice: "主播语音",
@@ -241,6 +269,22 @@ async function clearContextEvents() {
                 <span>{{ view.mockSource.tickCount }} 次 · {{ view.mockSource.intervalMs }}ms</span>
                 <span>{{ mockSourceLastEvent }}</span>
                 <span v-if="view.mockSource.error" class="home-context-error">{{ view.mockSource.error }}</span>
+              </div>
+              <div class="home-simulation-status" aria-label="观众模拟状态">
+                <StatusBadge :label="view.simulationStatus.rhythmLabel" tone="info" />
+                <span>{{ view.simulationStatus.memoryAudienceCount }} 记忆观众</span>
+                <span>{{ view.simulationStatus.shadowAudienceCount }} 影子观众</span>
+              </div>
+            </div>
+
+            <div class="home-simulation-metrics" aria-label="观众编排指标">
+              <div
+                v-for="metric in simulationMetrics"
+                :key="metric.label"
+                class="home-simulation-metric"
+              >
+                <span>{{ metric.label }}</span>
+                <strong>{{ metric.value }}</strong>
               </div>
             </div>
 
@@ -510,6 +554,42 @@ async function clearContextEvents() {
   line-height: 1.45;
 }
 
+.home-simulation-status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.home-simulation-metrics {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.home-simulation-metric {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.home-simulation-metric strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
 .home-mock-records {
   display: flex;
   flex-direction: column;
@@ -665,6 +745,10 @@ async function clearContextEvents() {
     flex-direction: column;
   }
 
+  .home-simulation-status {
+    justify-content: flex-start;
+  }
+
 }
 
 @media (max-width: 700px) {
@@ -676,6 +760,10 @@ async function clearContextEvents() {
   .home-source-side {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .home-simulation-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

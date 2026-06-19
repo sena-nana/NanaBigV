@@ -7,6 +7,16 @@ export type UsageWindowKey = "24h" | "7d" | "30d";
 export type AudienceActivityLevel = "high" | "medium" | "low";
 export type AudienceSpendingTier = "high" | "medium" | "low";
 export type AudienceRelationship = "core" | "regular" | "new";
+export type AudienceKind = "memory_profile" | "shadow_profile";
+export type AudienceRhythmState = "cold" | "steady" | "peak" | "closing";
+export type AudienceReactionKind =
+  | "agreement"
+  | "question"
+  | "advice"
+  | "joke"
+  | "support"
+  | "spending"
+  | "membership_entry";
 
 export interface WorkbenchNavItem {
   key: WorkbenchNavKey;
@@ -115,6 +125,32 @@ export interface MockSourceRecord {
   happenedAt: string;
 }
 
+export interface AudienceInteractionIntent {
+  audienceId: string;
+  audienceName: string;
+  audienceKind: AudienceKind;
+  interactionType: InteractionType;
+  reactionKind: AudienceReactionKind;
+  intensity: number;
+  styleHints: string[];
+  contextRefs: string[];
+  needsGeneration: boolean;
+}
+
+export interface AudienceSimulationStatus {
+  rhythmState: AudienceRhythmState;
+  rhythmLabel: string;
+  activeAudienceCount: number;
+  plannedIntentCount: number;
+  llmBatchCallCount: number;
+  localGeneratedCount: number;
+  cooldownRejectCount: number;
+  throttleRejectCount: number;
+  budgetRejectCount: number;
+  memoryAudienceCount: number;
+  shadowAudienceCount: number;
+}
+
 export interface DanmakuViewModel {
   liveStatus: LiveRoomStatus;
   inputSources: InputSourceStatus[];
@@ -126,6 +162,7 @@ export interface DanmakuViewModel {
   blivechatChannels: BlivechatRenderChannel[];
   mockSource: MockSourceStatus;
   mockSourceRecords: MockSourceRecord[];
+  simulationStatus: AudienceSimulationStatus;
   notices: RuntimeNotice[];
 }
 
