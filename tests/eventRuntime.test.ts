@@ -71,7 +71,10 @@ describe("local blivechat event runtime", () => {
       tone: "warn",
       amountLabel: "¥30",
     });
-    expect(snapshot.records[0].reason).toBe("通道关闭或自动投递暂停");
+    expect(snapshot.records[0]).toMatchObject({
+      action: "throttle",
+      reason: "通道关闭或自动投递暂停",
+    });
   });
 
   it("resets pending events, records, stats, and emits a snapshot", () => {
