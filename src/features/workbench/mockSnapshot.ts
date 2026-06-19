@@ -143,6 +143,19 @@ export const BIGV_WORKBENCH_SNAPSHOT: BigVWorkbenchSnapshot = {
       intervalMs: 2500,
     },
     mockSourceRecords: [],
+    simulationStatus: {
+      rhythmState: "cold",
+      rhythmLabel: "冷场观察",
+      activeAudienceCount: 0,
+      plannedIntentCount: 0,
+      llmBatchCallCount: 0,
+      localGeneratedCount: 0,
+      cooldownRejectCount: 0,
+      throttleRejectCount: 0,
+      budgetRejectCount: 0,
+      memoryAudienceCount: 0,
+      shadowAudienceCount: 240,
+    },
     notices: [
       {
         id: "notice-2",

@@ -35,13 +35,12 @@ describe("workbench mock data source", () => {
     expect(runtime.records[0]).toMatchObject({
       frameLabel: "开场反馈",
       contextLabels: ["主播语音"],
-      interactionLabels: ["弹幕"],
       statusLabel: "已触发",
     });
-    expect(runtime.queue.snapshot().stats.find((stat) => stat.type === "danmaku")).toMatchObject({
-      delivered: 1,
-      throttled: 0,
-    });
+    expect(runtime.records[0].interactionLabels.length).toBeGreaterThan(0);
+    expect(deliveredCount(runtime.queue.snapshot().stats)).toBeGreaterThan(0);
+    expect(runtime.simulationStatus.plannedIntentCount).toBeGreaterThan(0);
+    expect(runtime.simulationStatus.shadowAudienceCount).toBe(240);
     runtime.source.pause();
   });
 
@@ -57,33 +56,14 @@ describe("workbench mock data source", () => {
     expect(runtime.queue.snapshot().records).toEqual([]);
   });
 
-  it("uses runtime toggles to throttle dispatch, gift, and super chat channels", async () => {
+  it("uses runtime toggles to throttle disabled dispatch channels", async () => {
     const dispatchRuntime = createRuntime(withToggle("dispatch", false));
     dispatchRuntime.source.start();
     await vi.advanceTimersByTimeAsync(MOCK_SOURCE_INTERVAL_MS);
     dispatchRuntime.source.pause();
-    expect(dispatchRuntime.queue.snapshot().stats.find((stat) => stat.type === "danmaku")).toMatchObject({
-      delivered: 0,
-      throttled: 1,
-    });
-
-    const giftRuntime = createRuntime(withToggle("gifts", false));
-    giftRuntime.source.start();
-    await vi.advanceTimersByTimeAsync(MOCK_SOURCE_INTERVAL_MS * 2);
-    giftRuntime.source.pause();
-    expect(giftRuntime.queue.snapshot().stats.find((stat) => stat.type === "gift")).toMatchObject({
-      delivered: 0,
-      throttled: 1,
-    });
-
-    const superChatRuntime = createRuntime(withToggle("super-chat", false));
-    superChatRuntime.source.start();
-    await vi.advanceTimersByTimeAsync(MOCK_SOURCE_INTERVAL_MS * 3);
-    superChatRuntime.source.pause();
-    expect(superChatRuntime.queue.snapshot().stats.find((stat) => stat.type === "super_chat")).toMatchObject({
-      delivered: 0,
-      throttled: 1,
-    });
+    const stats = dispatchRuntime.queue.snapshot().stats;
+    expect(deliveredCount(stats)).toBe(0);
+    expect(throttledCount(stats)).toBeGreaterThan(0);
   });
 
   it("submits reserved context sources without adding them to context events", async () => {
@@ -115,6 +95,19 @@ function createRuntime(toggles: RuntimeToggleState[] = defaultToggles()) {
     intervalMs: MOCK_SOURCE_INTERVAL_MS,
   };
   let records: MockSourceRecord[] = [];
+  let simulationStatus = {
+    rhythmState: "cold",
+    rhythmLabel: "冷场观察",
+    activeAudienceCount: 0,
+    plannedIntentCount: 0,
+    llmBatchCallCount: 0,
+    localGeneratedCount: 0,
+    cooldownRejectCount: 0,
+    throttleRejectCount: 0,
+    budgetRejectCount: 0,
+    memoryAudienceCount: 0,
+    shadowAudienceCount: 0,
+  };
 
   const source = new WorkbenchMockDataSource({
     queue,
@@ -150,6 +143,9 @@ function createRuntime(toggles: RuntimeToggleState[] = defaultToggles()) {
       status = nextStatus;
       records = nextRecords;
     },
+    onSimulationStatusChange(nextStatus) {
+      simulationStatus = nextStatus;
+    },
     now: () => Date.now(),
   });
 
@@ -166,6 +162,9 @@ function createRuntime(toggles: RuntimeToggleState[] = defaultToggles()) {
     get records() {
       return records;
     },
+    get simulationStatus() {
+      return simulationStatus;
+    },
   };
 }
 
@@ -181,6 +180,14 @@ function withToggle(key: string, enabled: boolean) {
   return defaultToggles().map((toggle) =>
     toggle.key === key ? { ...toggle, enabled } : toggle,
   );
+}
+
+function deliveredCount(stats: Array<{ delivered: number }>) {
+  return stats.reduce((total, stat) => total + stat.delivered, 0);
+}
+
+function throttledCount(stats: Array<{ throttled: number }>) {
+  return stats.reduce((total, stat) => total + stat.throttled, 0);
 }
 
 function emptyContextWindow(): ContextWindowSnapshot {

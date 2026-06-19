@@ -12,6 +12,7 @@ import {
   deriveAudienceViewFromMemory,
   deriveReviewViewFromMemory,
 } from "../memory/viewModels";
+import { createInitialAudienceSimulationStatus } from "./audiencePlanner";
 import {
   createLocalBlivechatQueue,
   type BlivechatEventInput,
@@ -38,6 +39,7 @@ import type {
   MockSourceRecord,
   RuntimeNotice,
   RuntimeToggleState,
+  AudienceSimulationStatus,
 } from "./types";
 
 const STORAGE_KEY = `${appConfig.storageKeyPrefix}.workbench`;
@@ -82,6 +84,7 @@ const memoryLoading = ref(false);
 const memoryError = ref<string | null>(null);
 const mockSourceStatus = ref(createInitialMockSourceStatus());
 const mockSourceRecords = ref<MockSourceRecord[]>([]);
+const simulationStatus = ref<AudienceSimulationStatus>(createInitialAudienceSimulationStatus());
 const baselineInteractionSeed: BlivechatEventInput[] = [
   {
     type: "danmaku",
@@ -368,6 +371,7 @@ function deriveDanmakuView(snapshot: BigVWorkbenchSnapshot): DanmakuViewModel {
     blivechatChannels: deriveBlivechatChannels(queueSnapshot),
     mockSource: mockSourceStatus.value,
     mockSourceRecords: mockSourceRecords.value,
+    simulationStatus: simulationStatus.value,
     notices: deriveNotices(baseView),
   };
 }
@@ -388,9 +392,15 @@ const mockDataSource = new WorkbenchMockDataSource({
   canDeliverInteraction(type) {
     return isMockInteractionDeliverable(type, snapshot.value.danmaku.toggles);
   },
+  getMemorySnapshot() {
+    return memorySnapshot.value;
+  },
   onChange(status, records) {
     mockSourceStatus.value = status;
     mockSourceRecords.value = records;
+  },
+  onSimulationStatusChange(status) {
+    simulationStatus.value = status;
   },
 });
 
