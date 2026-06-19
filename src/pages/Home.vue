@@ -239,7 +239,7 @@ async function clearContextEvents() {
             <div class="home-section-head">
               <div>
                 <h2 id="output-events-title">模拟互动输出</h2>
-                <p>阶段 3 仍保留现有模拟投递数据</p>
+                <p>本地 blivechat 队列记录 enqueue / deliver / throttle</p>
               </div>
             </div>
 
@@ -252,6 +252,8 @@ async function clearContextEvents() {
                 >
                   <span class="home-feed-event__type">{{ interactionTypeLabels[event.type] }}</span>
                   <span class="home-feed-event__text">{{ formatEventText(event) }}</span>
+                  <span class="home-feed-event__time">{{ event.happenedAt }}</span>
+                  <StatusBadge :label="event.statusLabel" :tone="event.tone" />
                 </div>
               </div>
             </div>
@@ -514,6 +516,16 @@ async function clearContextEvents() {
   text-overflow: ellipsis;
   flex: 1;
   min-width: 0;
+}
+
+.home-feed-event__time {
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.home-feed-event :deep(.status-badge) {
+  flex: 0 0 auto;
 }
 
 .home-sidebar-card {
