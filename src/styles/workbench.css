@@ -10,6 +10,10 @@
   overflow: hidden;
 }
 
+.workbench-page .page-header {
+  margin-bottom: 0;
+}
+
 .workbench-page .card {
   margin-bottom: 0;
 }
@@ -214,8 +218,191 @@
   border: 1px solid var(--border-soft);
 }
 
+.quota-page {
+  height: 100%;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.quota-page__header {
+  flex: 0 0 auto;
+}
+
+.quota-page__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.quota-overview {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.quota-metric {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elev);
+}
+
+.quota-metric span {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.quota-metric strong {
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quota-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.quota-trend-card,
+.quota-stats-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.quota-card-head {
+  margin-bottom: 10px;
+}
+
+.quota-card-head span {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.usage-chart {
+  position: relative;
+  min-width: 0;
+}
+
+.usage-chart--trend {
+  height: 340px;
+}
+
+.quota-stats-tabs {
+  align-self: flex-start;
+  margin-bottom: 12px;
+}
+
+.quota-stats-table-wrap {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.quota-stats-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+}
+
+.quota-stats-table caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.quota-stats-table th,
+.quota-stats-table td {
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--text);
+  font-size: 13px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.quota-stats-table thead th {
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.quota-stats-table th:first-child,
+.quota-stats-table td:first-child {
+  text-align: left;
+}
+
+.quota-stats-table tbody tr:last-child th,
+.quota-stats-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.quota-stats-table tbody th {
+  font-weight: 700;
+}
+
+.quota-stats-table tbody td:last-child {
+  color: var(--text-muted);
+}
+
+.quota-stats-table__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.quota-stats-table__swatch {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.quota-stats-table__swatch.is-ok {
+  background: var(--ok);
+}
+
+.quota-stats-table__swatch.is-warn {
+  background: var(--warn);
+}
+
+.quota-stats-table__swatch.is-error {
+  background: var(--err);
+}
+
+.quota-stats-table__swatch.is-info {
+  background: var(--accent);
+}
+
 @media (max-width: 1100px) {
   .workbench-main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quota-overview {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .quota-layout {
     grid-template-columns: 1fr;
   }
 }
@@ -236,5 +423,35 @@
 
   .workbench-chart-value {
     text-align: left;
+  }
+
+  .quota-page__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .quota-page__scroll {
+    padding-right: 0;
+  }
+
+  .quota-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .quota-metric {
+    padding: 9px 10px;
+  }
+
+  .usage-chart--trend {
+    height: 260px;
+  }
+
+  .quota-stats-table {
+    min-width: 560px;
+  }
+
+  .quota-stats-table th,
+  .quota-stats-table td {
+    padding: 11px 12px;
   }
 }

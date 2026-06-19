@@ -27,6 +27,48 @@ vi.mock("@tauri-apps/api/core", () => ({
     mockInvoke(command, payload),
 }));
 
+vi.mock("vue-chartjs", async () => {
+  const vue = await vi.importActual<typeof import("vue")>("vue");
+  const chartComponent = (name: string) =>
+    vue.defineComponent({
+      name,
+      props: {
+        data: {
+          type: Object,
+          required: true,
+        },
+        options: {
+          type: Object,
+          required: true,
+        },
+      },
+      setup(props) {
+        return () => {
+          const data = props.data as {
+            labels?: unknown[];
+            datasets?: Array<{ label?: string; data?: unknown[]; yAxisID?: string }>;
+          };
+          return vue.h("div", {
+            "data-testid": `mock-${name}-chart`,
+            "data-chart-labels": JSON.stringify(data.labels ?? []),
+            "data-chart-values": JSON.stringify(data.datasets?.[0]?.data ?? []),
+            "data-chart-series": JSON.stringify(
+              data.datasets?.map((dataset) => ({
+                label: dataset.label,
+                values: dataset.data ?? [],
+                yAxisID: dataset.yAxisID ?? "y",
+              })) ?? [],
+            ),
+          });
+        };
+      },
+    });
+
+  return {
+    Line: chartComponent("line"),
+  };
+});
+
 const emptyContextWindow = {
   windowStartedAt: 1_800_000_000_000,
   windowSeconds: 300,
@@ -344,14 +386,48 @@ describe("基础路由", () => {
   });
 
   it("额度检查页支持切换时间窗", async () => {
-    await renderAt("/quota");
+    const view = await renderAt("/quota");
 
     expect(await screen.findByText("24 小时趋势")).toBeInTheDocument();
     expect(screen.getByText("请求")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "24 小时 token 使用趋势" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "模型统计" })).toBeInTheDocument();
+    expect(screen.getByText("gpt-4.1-mini")).toBeInTheDocument();
+    expect(screen.getByText("214,000")).toBeInTheDocument();
+    expect(view.container.querySelector("[data-testid='mock-pie-chart']")).not.toBeInTheDocument();
+    expect(view.container.querySelector("[data-testid='mock-line-chart']")).toHaveAttribute(
+      "data-chart-labels",
+      JSON.stringify(["00", "04", "08", "12", "16", "20"]),
+    );
+    expect(view.container.querySelector("[data-testid='mock-line-chart']")).toHaveAttribute(
+      "data-chart-series",
+      JSON.stringify([
+        { label: "输入", values: [22400, 18800, 49200, 64200, 74500, 89300], yAxisID: "y" },
+        { label: "输出", values: [6400, 5400, 12600, 16300, 21600, 30300], yAxisID: "y" },
+        { label: "失败重试", values: [1200, 900, 2400, 3500, 4400, 5840], yAxisID: "y" },
+        { label: "成本", values: [2.64, 2.18, 5.78, 7.42, 9.24, 11.46], yAxisID: "cost" },
+      ]),
+    );
+
+    await fireEvent.click(screen.getByRole("button", { name: "能力统计" }));
+    expect(await screen.findByRole("table", { name: "能力统计" })).toBeInTheDocument();
+    expect(screen.getByText("互动生成")).toBeInTheDocument();
+    expect(screen.getByText("196,000")).toBeInTheDocument();
+
+    await fireEvent.click(screen.getByRole("button", { name: "子系统统计" }));
+    expect(await screen.findByRole("table", { name: "子系统统计" })).toBeInTheDocument();
+    expect(screen.getByText("Provider 请求")).toBeInTheDocument();
+    expect(screen.getByText("峰值每小时 18 次")).toBeInTheDocument();
 
     await fireEvent.click(screen.getByRole("button", { name: "7 天" }));
 
     expect(await screen.findByText("7 天趋势")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(view.container.querySelector("[data-testid='mock-line-chart']")).toHaveAttribute(
+        "data-chart-labels",
+        JSON.stringify(["周一", "周二", "周三", "周四", "周五", "周六", "周日"]),
+      );
+    });
   });
 
   it("额度检查页会恢复上次选择的时间窗", async () => {
