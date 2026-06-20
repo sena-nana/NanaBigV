@@ -7,6 +7,12 @@ import {
   loadContextWindow,
   submitContextEvent,
 } from "../context/api";
+import {
+  EchoLiveWebSocketClient,
+  createInitialEchoLiveConnectionStatus,
+  type EchoLiveConnectionStatus,
+  type EchoLiveTextPayload,
+} from "../context/echoLiveClient";
 import { loadMemorySnapshot } from "../memory/api";
 import {
   deriveAudienceViewFromMemory,
@@ -66,9 +72,9 @@ const EMPTY_CONTEXT_WINDOW: ContextWindowSnapshot = {
     {
       source: "echo_live",
       label: "Echo-Live",
-      statusLabel: "预留接口",
+      statusLabel: "未连接",
       tone: "info",
-      summary: "Echo-Live 输入适配器已预留，阶段 3 不接入真实事件。",
+      summary: "等待 Echo-Live WebSocket 文本输入。",
       eventCount: 0,
     },
     {
@@ -85,6 +91,7 @@ const EMPTY_CONTEXT_WINDOW: ContextWindowSnapshot = {
 const contextWindow = ref<ContextWindowSnapshot>(structuredClone(EMPTY_CONTEXT_WINDOW));
 const contextLoading = ref(false);
 const contextError = ref<string | null>(null);
+const echoLiveStatus = ref<EchoLiveConnectionStatus>(createInitialEchoLiveConnectionStatus());
 const memorySnapshot = ref<MemoryStoreSnapshot | null>(null);
 const memoryLoading = ref(false);
 const memoryError = ref<string | null>(null);
@@ -256,6 +263,14 @@ function deriveNotices(view: DanmakuViewModel): RuntimeNotice[] {
       tone: "error",
     });
   }
+  if (echoLiveStatus.value.error) {
+    notices.unshift({
+      id: "runtime-echo-live-error",
+      title: "Echo-Live 连接异常",
+      detail: echoLiveStatus.value.error,
+      tone: "error",
+    });
+  }
   if (memoryError.value) {
     notices.unshift({
       id: "runtime-memory-error",
@@ -268,7 +283,54 @@ function deriveNotices(view: DanmakuViewModel): RuntimeNotice[] {
 }
 
 function deriveContextSources(window: ContextWindowSnapshot): InputSourceStatus[] {
-  return window.sourceStatuses.map((source) => ({
+  return window.sourceStatuses.map((source) => {
+    if (source.source === "echo_live") {
+      return mergeEchoLiveSourceStatus(source);
+    }
+    return contextSourceStatus(source);
+  });
+}
+
+function mergeEchoLiveSourceStatus(
+  source: ContextWindowSnapshot["sourceStatuses"][number],
+): InputSourceStatus {
+  const connection = echoLiveStatus.value;
+  const base = contextSourceStatus(source);
+  if (connection.state === "connecting") {
+    return {
+      ...base,
+      statusLabel: connection.statusLabel,
+      tone: connection.tone,
+      summary: `正在连接 ${connection.url}`,
+    };
+  }
+  if (connection.state === "connected" && source.eventCount === 0) {
+    return {
+      ...base,
+      statusLabel: connection.statusLabel,
+      tone: connection.tone,
+      summary: "Echo-Live WebSocket 已连接，等待文本广播。",
+      lastEventAt: connection.lastMessageAt,
+    };
+  }
+  if (connection.state === "error") {
+    return {
+      ...base,
+      statusLabel: connection.statusLabel,
+      tone: connection.tone,
+      summary: connection.error ?? "Echo-Live WebSocket 连接异常。",
+    };
+  }
+  return {
+    ...base,
+    lastEventAt: base.lastEventAt ?? connection.lastMessageAt,
+  };
+}
+
+function contextSourceStatus(
+  source: ContextWindowSnapshot["sourceStatuses"][number],
+): InputSourceStatus {
+  return {
     key: source.source,
     source: source.source,
     label: source.label,
@@ -277,7 +339,7 @@ function deriveContextSources(window: ContextWindowSnapshot): InputSourceStatus[
     summary: source.summary,
     lastEventAt: source.lastEventAt,
     eventCount: source.eventCount,
-  }));
+  };
 }
 
 function deriveBlivechatChannels(queueSnapshot: BlivechatQueueSnapshot): BlivechatRenderChannel[] {
@@ -470,6 +532,14 @@ const mockDataSource = new WorkbenchMockDataSource({
   },
   onPlanTrace(trace) {
     recordPlanTrace(trace);
+  },
+});
+const echoLiveClient = new EchoLiveWebSocketClient({
+  async submitText(payload) {
+    await submitEchoLiveContext(payload);
+  },
+  onStatusChange(status) {
+    echoLiveStatus.value = status;
   },
 });
 
@@ -666,6 +736,31 @@ async function submitVoiceContext(content: string): Promise<boolean> {
   }
 }
 
+async function submitEchoLiveContext(payload: EchoLiveTextPayload): Promise<void> {
+  contextLoading.value = true;
+  contextError.value = null;
+  try {
+    contextWindow.value = await submitContextEvent({
+      source: "echo_live",
+      content: payload.content,
+      summary: payload.summary,
+    });
+  } catch (error) {
+    contextError.value = `提交 Echo-Live 文本失败：${toErrorMessage(error)}`;
+    throw error;
+  } finally {
+    contextLoading.value = false;
+  }
+}
+
+function connectEchoLive() {
+  echoLiveClient.connect();
+}
+
+function disconnectEchoLive() {
+  echoLiveClient.disconnect();
+}
+
 async function clearWorkbenchContextWindow(): Promise<boolean> {
   contextLoading.value = true;
   contextError.value = null;
@@ -693,9 +788,12 @@ export function useWorkbenchStore() {
     memorySnapshot,
     memoryLoading,
     memoryError,
+    echoLiveStatus,
     refreshContextWindow,
     refreshMemorySnapshot,
     submitVoiceContext,
+    connectEchoLive,
+    disconnectEchoLive,
     clearWorkbenchContextWindow,
     toggleRuntime,
   };

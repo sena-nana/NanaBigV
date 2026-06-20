@@ -71,7 +71,7 @@ describe("workbench mock data source", () => {
     expect(throttledCount(stats)).toBeGreaterThan(0);
   });
 
-  it("submits reserved context sources without adding them to context events", async () => {
+  it("submits Echo-Live context while keeping vision reserved", async () => {
     const runtime = createRuntime();
 
     runtime.source.start();
@@ -79,13 +79,17 @@ describe("workbench mock data source", () => {
     runtime.source.pause();
 
     expect(runtime.submitted.map((event) => event.source)).toEqual(["voice", "echo_live", "vision"]);
-    expect(runtime.contextWindow.events).toHaveLength(1);
+    expect(runtime.contextWindow.events).toHaveLength(2);
     expect(runtime.contextWindow.events[0]).toMatchObject({
+      source: "echo_live",
+      summary: "外部场控提示隐藏路线",
+    });
+    expect(runtime.contextWindow.events[1]).toMatchObject({
       source: "voice",
       summary: "主播说明今晚流程",
     });
     expect(runtime.records[0].contextLabels).toEqual(["视觉上下文 预留未写入窗口"]);
-    expect(runtime.records[1].contextLabels).toEqual(["Echo-Live 预留未写入窗口"]);
+    expect(runtime.records[1].contextLabels).toEqual(["Echo-Live"]);
   });
 });
 
@@ -119,7 +123,7 @@ function createRuntime(toggles: RuntimeToggleState[] = defaultToggles()) {
     queue,
     async submitContextEvent(event) {
       submitted.push(event);
-      if (event.source === "voice") {
+      if (event.source !== "vision") {
         contextWindow = {
           ...contextWindow,
           events: [
@@ -219,9 +223,9 @@ function emptyContextWindow(): ContextWindowSnapshot {
       {
         source: "echo_live",
         label: "Echo-Live",
-        statusLabel: "预留接口",
+        statusLabel: "未连接",
         tone: "info",
-        summary: "Echo-Live 输入适配器已预留，阶段 3 不接入真实事件。",
+        summary: "等待 Echo-Live WebSocket 文本输入。",
         eventCount: 0,
       },
       {

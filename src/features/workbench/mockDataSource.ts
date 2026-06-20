@@ -224,7 +224,7 @@ export class WorkbenchMockDataSource {
       }
 
       const contextLabels = frame.contextEvents.map((event) =>
-        event.source === "voice"
+        event.source !== "vision"
           ? SOURCE_LABELS[event.source]
           : `${SOURCE_LABELS[event.source]} 预留未写入窗口`,
       );
