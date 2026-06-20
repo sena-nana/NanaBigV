@@ -80,16 +80,19 @@ describe("audience planner", () => {
     expect(request.activeAudienceProfiles.length).toBeLessThanOrEqual(request.intents.length);
     expect(request.activeAudienceProfiles.length).toBeLessThanOrEqual(16);
     expect(prompt).toContain("activeAudienceProfiles");
+    expect(prompt).toContain("items");
     expect(prompt).not.toContain("shadow-200");
 
     const valid = parseAudienceBatchGenerationResult(
-      JSON.stringify([
-        {
-          audienceId: request.intents[0].audienceId,
-          type: request.intents[0].interactionType,
-          content: "这一段建议先讲清楚目标再推进。",
-        },
-      ]),
+      JSON.stringify({
+        items: [
+          {
+            audienceId: request.intents[0].audienceId,
+            type: request.intents[0].interactionType,
+            content: "这一段建议先讲清楚目标再推进。",
+          },
+        ],
+      }),
       { ...request, maxOutputCount: 1, intents: [request.intents[0]] },
     );
     expect(valid.ok).toBe(true);

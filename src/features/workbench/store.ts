@@ -22,6 +22,7 @@ import {
   buildAudienceBatchGenerationPrompt,
   createInitialAudienceSimulationStatus,
 } from "./audiencePlanner";
+import { generateAudienceBatch } from "./audienceGeneration";
 import {
   createLocalBlivechatQueue,
   type BlivechatEventInput,
@@ -533,6 +534,7 @@ const mockDataSource = new WorkbenchMockDataSource({
   onPlanTrace(trace) {
     recordPlanTrace(trace);
   },
+  generateAudienceBatch,
 });
 const echoLiveClient = new EchoLiveWebSocketClient({
   async submitText(payload) {
@@ -628,14 +630,41 @@ function generationRecord(trace: WorkbenchMockPlanTrace): WorkbenchInsightRecord
     .slice(0, 3)
     .map((event) => `${event.audienceName}：${event.content}`)
     .join(" / ");
+  const usedProvider = trace.generationSource === "provider";
+  const providerFallback = Boolean(trace.generationRequest && !usedProvider);
+  const title =
+    usedProvider
+      ? "Provider 生成"
+      : providerFallback
+        ? "Provider 失败，本地兜底"
+        : "本地兜底生成";
+  const metaParts = [`${trace.frameLabel} · ${trace.generatedEvents.length} 条`];
+  if (trace.providerModel) metaParts.push(trace.providerModel);
+  if (typeof trace.providerLatencyMs === "number") metaParts.push(`${trace.providerLatencyMs}ms`);
   return {
     id: `${trace.id}-generation`,
-    title: trace.generationRequest ? "Provider 请求待接入" : "本地兜底生成",
-    detail: detail || "本轮没有生成可投递互动。",
+    title,
+    detail:
+      detail ||
+      trace.generationError?.message ||
+      "本轮没有生成可投递互动。",
     happenedAt: formatQueueTime(trace.happenedAt),
-    statusLabel: trace.generatedEvents.length > 0 ? "已生成" : "无输出",
-    tone: trace.generatedEvents.length > 0 ? "ok" : "warn",
-    meta: `${trace.frameLabel} · ${trace.generatedEvents.length} 条`,
+    statusLabel: usedProvider
+      ? "Provider"
+      : providerFallback
+        ? "已兜底"
+        : trace.generatedEvents.length > 0
+          ? "本地"
+          : "无输出",
+    tone: usedProvider
+      ? "ok"
+      : providerFallback
+        ? "warn"
+        : trace.generatedEvents.length > 0
+          ? "info"
+          : "warn",
+    meta: metaParts.join(" · "),
+    evidence: trace.generationError ? [trace.generationError.message] : undefined,
   };
 }
 

@@ -53,3 +53,23 @@ export interface ProviderModelListFailure {
 export type ProviderModelListResult =
   | ProviderModelListSuccess
   | ProviderModelListFailure;
+
+export interface ProviderJsonGenerationSuccess {
+  ok: true;
+  content: string;
+  latencyMs: number;
+  model: string;
+  error?: undefined;
+}
+
+export interface ProviderJsonGenerationFailure {
+  ok: false;
+  error: ProviderError;
+  content?: undefined;
+  latencyMs?: undefined;
+  model?: undefined;
+}
+
+export type ProviderJsonGenerationResult =
+  | ProviderJsonGenerationSuccess
+  | ProviderJsonGenerationFailure;
