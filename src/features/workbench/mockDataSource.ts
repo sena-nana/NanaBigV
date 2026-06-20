@@ -286,17 +286,7 @@ export class WorkbenchMockDataSource {
       return { source: "local_fallback", events: fallbackEvents };
     }
 
-    let result: AudienceProviderBatchGenerationResult;
-    try {
-      result = await generateAudienceBatch(request);
-    } catch (error) {
-      return {
-        source: "local_fallback",
-        events: fallbackEvents,
-        error: providerGenerationException(error),
-      };
-    }
-
+    const result = await generateAudienceBatch(request);
     if (!result.ok) {
       return {
         source: "local_fallback",
@@ -360,11 +350,4 @@ function formatTime(value: number) {
     second: "2-digit",
     hour12: false,
   });
-}
-
-function providerGenerationException(error: unknown): ProviderError {
-  return {
-    kind: "transport",
-    message: `provider 生成调用失败：${error instanceof Error ? error.message : String(error)}`,
-  };
 }

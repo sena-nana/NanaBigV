@@ -150,26 +150,6 @@ describe("workbench mock data source", () => {
     expect(deliveredCount(fallbackRuntime.queue.snapshot().stats)).toBeGreaterThan(0);
   });
 
-  it("keeps the mock loop running when provider generation throws", async () => {
-    const runtime = createRuntime(defaultToggles(), async () => {
-      throw new Error("unknown command");
-    });
-
-    runtime.source.start();
-    await vi.advanceTimersByTimeAsync(MOCK_SOURCE_INTERVAL_MS);
-    runtime.source.pause();
-
-    expect(runtime.status.state).toBe("paused");
-    expect(runtime.status.error).toBeUndefined();
-    expect(runtime.planTraces[0]).toMatchObject({
-      generationSource: "local_fallback",
-      generationError: {
-        kind: "transport",
-        message: expect.stringContaining("unknown command"),
-      },
-    });
-    expect(deliveredCount(runtime.queue.snapshot().stats)).toBeGreaterThan(0);
-  });
 });
 
 function createRuntime(
