@@ -6,6 +6,7 @@ export interface BlivechatEventInput {
   type: InteractionType;
   audienceName: string;
   content: string;
+  audienceId?: string;
   amountLabel?: string;
 }
 

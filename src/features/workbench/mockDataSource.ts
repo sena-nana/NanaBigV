@@ -7,7 +7,12 @@ import {
   type AudienceBatchGenerationRequest,
   createInitialAudienceSimulationStatus,
 } from "./audiencePlanner";
-import type { BlivechatEventInput, BlivechatEventQueue } from "./eventRuntime";
+import type {
+  BlivechatEventInput,
+  BlivechatEventQueue,
+  BlivechatQueueRecord,
+} from "./eventRuntime";
+import { deliveredMemoryWriteCandidates } from "./memoryWriteback";
 import type {
   AudienceSimulationStatus,
   InteractionType,
@@ -214,6 +219,19 @@ export class WorkbenchMockDataSource {
       });
       this.simulationStatus = plan.status;
       const generation = await this.generateEvents(plan.generationRequest, plan.events);
+
+      const interactionLabels: string[] = [];
+      const deliveredRecords: BlivechatQueueRecord[] = [];
+      for (const [index, event] of generation.events.entries()) {
+        const happenedAt = this.now() + index * 150;
+        this.options.queue.enqueue(event, happenedAt);
+        const deliveryRecord = this.options.queue.deliverNext(
+          (queuedEvent) => this.options.canDeliverInteraction(queuedEvent.type),
+          happenedAt + 500,
+        );
+        if (deliveryRecord?.action === "deliver") deliveredRecords.push(deliveryRecord);
+        interactionLabels.push(INTERACTION_LABELS[event.type]);
+      }
       this.options.onPlanTrace?.({
         id: `mock-plan-${this.status.tickCount + 1}-${frame.id}`,
         frameLabel: frame.label,
@@ -225,19 +243,11 @@ export class WorkbenchMockDataSource {
         providerLatencyMs: generation.latencyMs,
         providerModel: generation.model,
         generatedEvents: generation.events,
-        memoryWriteCandidates: plan.memoryWriteCandidates,
+        memoryWriteCandidates: deliveredMemoryWriteCandidates(
+          plan.memoryWriteCandidates,
+          deliveredRecords,
+        ),
       });
-
-      const interactionLabels: string[] = [];
-      for (const [index, event] of generation.events.entries()) {
-        const happenedAt = this.now() + index * 150;
-        this.options.queue.enqueue(event, happenedAt);
-        this.options.queue.deliverNext(
-          (queuedEvent) => this.options.canDeliverInteraction(queuedEvent.type),
-          happenedAt + 500,
-        );
-        interactionLabels.push(INTERACTION_LABELS[event.type]);
-      }
 
       const contextLabels = frame.contextEvents.map((event) =>
         event.source !== "vision"

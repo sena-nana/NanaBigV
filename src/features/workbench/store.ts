@@ -13,7 +13,7 @@ import {
   type EchoLiveConnectionStatus,
   type EchoLiveTextPayload,
 } from "../context/echoLiveClient";
-import { loadMemorySnapshot } from "../memory/api";
+import { loadMemorySnapshot, submitMemoryWrite } from "../memory/api";
 import {
   deriveAudienceViewFromMemory,
   deriveReviewViewFromMemory,
@@ -38,7 +38,12 @@ import {
 } from "./mockDataSource";
 import { BIGV_WORKBENCH_SNAPSHOT } from "./mockSnapshot";
 import type { ContextWindowSnapshot } from "../context/types";
-import type { MemoryStoreSnapshot } from "../memory/types";
+import type {
+  MemoryStoreSnapshot,
+  MemoryWriteInput,
+  MemoryWriteResult,
+  MemoryWriteStatus,
+} from "../memory/types";
 import type {
   BlivechatRenderChannel,
   BlivechatRenderItem,
@@ -141,6 +146,19 @@ const BLIVECHAT_RENDER_ACTION_META = {
   deliver: { label: "已投递", tone: "ok" },
   throttle: { label: "被节流", tone: "warn" },
 } satisfies Record<BlivechatRenderItem["action"], { label: string; tone: BlivechatRenderItem["tone"] }>;
+
+type WorkbenchMemoryWriteOutcome =
+  | { candidate: MemoryWriteInput; result: MemoryWriteResult }
+  | { candidate: MemoryWriteInput; error: string };
+
+const MEMORY_WRITE_STATUS_META = {
+  accepted: { label: "已写回", tone: "ok" },
+  quarantined: { label: "已隔离", tone: "warn" },
+  rejected: { label: "已拒绝", tone: "warn" },
+} satisfies Record<
+  MemoryWriteStatus,
+  { label: string; tone: WorkbenchInsightRecord["tone"] }
+>;
 
 function cloneSnapshot<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -604,7 +622,34 @@ function applyQueueToggles(toggles: RuntimeToggleState[]) {
 function recordPlanTrace(trace: WorkbenchMockPlanTrace) {
   promptRecords.value = pushLimited(promptRecords.value, promptRecord(trace), 8);
   generationRecords.value = pushLimited(generationRecords.value, generationRecord(trace), 8);
-  memoryRecords.value = pushLimited(memoryRecords.value, memoryRecordsFor(trace, memorySnapshot.value), 10);
+  void recordMemoryWriteback(trace);
+}
+
+async function recordMemoryWriteback(trace: WorkbenchMockPlanTrace) {
+  const outcomes = await submitTraceMemoryWrites(trace);
+  memoryRecords.value = pushLimited(
+    memoryRecords.value,
+    memoryRecordsFor(trace, memorySnapshot.value, outcomes),
+    10,
+  );
+}
+
+async function submitTraceMemoryWrites(
+  trace: WorkbenchMockPlanTrace,
+): Promise<WorkbenchMemoryWriteOutcome[]> {
+  const outcomes: WorkbenchMemoryWriteOutcome[] = [];
+  for (const candidate of trace.memoryWriteCandidates) {
+    try {
+      const result = await submitMemoryWrite(candidate);
+      memorySnapshot.value = result.snapshot;
+      outcomes.push({ candidate, result });
+    } catch (error) {
+      const message = toErrorMessage(error);
+      memoryError.value = `提交记忆写回失败：${message}`;
+      outcomes.push({ candidate, error: message });
+    }
+  }
+  return outcomes;
 }
 
 function promptRecord(trace: WorkbenchMockPlanTrace): WorkbenchInsightRecord {
@@ -671,6 +716,7 @@ function generationRecord(trace: WorkbenchMockPlanTrace): WorkbenchInsightRecord
 function memoryRecordsFor(
   trace: WorkbenchMockPlanTrace,
   memory: MemoryStoreSnapshot | null,
+  writeOutcomes: WorkbenchMemoryWriteOutcome[],
 ): WorkbenchInsightRecord[] {
   const retrieval: WorkbenchInsightRecord = {
     id: `${trace.id}-memory-retrieval`,
@@ -685,14 +731,14 @@ function memoryRecordsFor(
     evidence: trace.contextWindow.events.slice(0, 2).map((event) => event.summary || event.content),
   };
 
-  if (trace.memoryWriteCandidates.length === 0) {
+  if (writeOutcomes.length === 0) {
     return [
       {
         id: `${trace.id}-memory-write-empty`,
-        title: "写回候选",
-        detail: "本轮未达到写回阈值，不提交长期记忆污染风险。",
+        title: "记忆写回",
+        detail: "本轮没有投递成功的写回候选，不提交长期记忆污染风险。",
         happenedAt: formatQueueTime(trace.happenedAt),
-        statusLabel: "无候选",
+        statusLabel: "无提交",
         tone: "info",
         meta: trace.frameLabel,
       },
@@ -701,18 +747,44 @@ function memoryRecordsFor(
   }
 
   return [
-    ...trace.memoryWriteCandidates.map((candidate, index) => ({
-      id: `${trace.id}-memory-write-${index}`,
-      title: "写回候选",
-      detail: candidate.summary,
-      happenedAt: formatQueueTime(trace.happenedAt),
-      statusLabel: "待提交",
-      tone: "warn" as const,
-      meta: trace.frameLabel,
-      evidence: candidate.evidence ?? [],
-    })),
+    ...writeOutcomes.map((outcome, index) => memoryWriteRecordFor(trace, outcome, index)),
     retrieval,
   ];
+}
+
+function memoryWriteRecordFor(
+  trace: WorkbenchMockPlanTrace,
+  outcome: WorkbenchMemoryWriteOutcome,
+  index: number,
+): WorkbenchInsightRecord {
+  if ("error" in outcome) {
+    return {
+      id: `${trace.id}-memory-write-${index}`,
+      title: "记忆写回",
+      detail: outcome.candidate.summary,
+      happenedAt: formatQueueTime(trace.happenedAt),
+      statusLabel: "提交失败",
+      tone: "error",
+      meta: `${trace.frameLabel} · ${outcome.candidate.source}`,
+      evidence: [...(outcome.candidate.evidence ?? []), outcome.error],
+    };
+  }
+
+  const status = MEMORY_WRITE_STATUS_META[outcome.result.status];
+  return {
+    id: `${trace.id}-memory-write-${index}`,
+    title: "记忆写回",
+    detail: outcome.result.record.summary,
+    happenedAt: formatQueueTime(trace.happenedAt),
+    statusLabel: status.label,
+    tone: status.tone,
+    meta: `${trace.frameLabel} · ${outcome.result.record.layer}`,
+    evidence: [
+      outcome.result.record.reason,
+      ...(outcome.result.record.riskFlags ?? []),
+      ...(outcome.candidate.evidence ?? []),
+    ],
+  };
 }
 
 function pushLimited<T>(records: T[], next: T | T[], limit: number) {
