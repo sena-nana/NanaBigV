@@ -12,7 +12,10 @@ import {
   deriveAudienceViewFromMemory,
   deriveReviewViewFromMemory,
 } from "../memory/viewModels";
-import { createInitialAudienceSimulationStatus } from "./audiencePlanner";
+import {
+  buildAudienceBatchGenerationPrompt,
+  createInitialAudienceSimulationStatus,
+} from "./audiencePlanner";
 import {
   createLocalBlivechatQueue,
   type BlivechatEventInput,
@@ -24,6 +27,7 @@ import {
   createInitialMockSourceStatus,
   isMockInteractionDeliverable,
   WorkbenchMockDataSource,
+  type WorkbenchMockPlanTrace,
 } from "./mockDataSource";
 import { BIGV_WORKBENCH_SNAPSHOT } from "./mockSnapshot";
 import type { ContextWindowSnapshot } from "../context/types";
@@ -40,6 +44,8 @@ import type {
   RuntimeNotice,
   RuntimeToggleState,
   AudienceSimulationStatus,
+  WorkbenchInsightRecord,
+  WorkbenchRuntimeInsight,
 } from "./types";
 
 const STORAGE_KEY = `${appConfig.storageKeyPrefix}.workbench`;
@@ -85,6 +91,9 @@ const memoryError = ref<string | null>(null);
 const mockSourceStatus = ref(createInitialMockSourceStatus());
 const mockSourceRecords = ref<MockSourceRecord[]>([]);
 const simulationStatus = ref<AudienceSimulationStatus>(createInitialAudienceSimulationStatus());
+const promptRecords = ref<WorkbenchInsightRecord[]>([]);
+const generationRecords = ref<WorkbenchInsightRecord[]>([]);
+const memoryRecords = ref<WorkbenchInsightRecord[]>([]);
 const baselineInteractionSeed: BlivechatEventInput[] = [
   {
     type: "danmaku",
@@ -328,6 +337,63 @@ function formatQueueTime(value: number) {
   });
 }
 
+function createRuntimeInsight(): WorkbenchRuntimeInsight {
+  const queueSnapshot = localEventQueueSnapshot.value;
+  return {
+    updatedAt: formatQueueTime(Date.now()),
+    sections: [
+      {
+        id: "inputs",
+        title: "最近输入",
+        emptyText: "暂无主播语音输入。",
+        records: contextWindow.value.events.slice(0, 5).map((event) => ({
+          id: event.id,
+          title: event.summary,
+          detail: event.content,
+          happenedAt: formatQueueTime(event.receivedAt),
+          statusLabel: event.source,
+          tone: "info" as const,
+        })),
+      },
+      {
+        id: "prompts",
+        title: "提示组装",
+        emptyText: "等待 mock 数据源产生编排记录。",
+        records: promptRecords.value,
+      },
+      {
+        id: "generations",
+        title: "生成结果",
+        emptyText: "等待本地生成或 provider 生成结果。",
+        records: generationRecords.value,
+      },
+      {
+        id: "deliveries",
+        title: "投递结果",
+        emptyText: "暂无投递协议记录。",
+        records: queueSnapshot.records.slice(0, 8).map((record) => {
+          const item = recordToBlivechatRenderItem(record);
+          return {
+            id: item.id,
+            title: item.audienceName,
+            detail: item.content,
+            happenedAt: item.happenedAt,
+            statusLabel: item.statusLabel,
+            tone: item.tone,
+            meta: `${item.type}${item.reasonLabel ? ` · ${item.reasonLabel}` : ""}`,
+          };
+        }),
+      },
+      {
+        id: "memory",
+        title: "记忆检索与写回",
+        emptyText: "等待记忆检索或写回候选记录。",
+        records: memoryRecords.value,
+      },
+    ],
+  };
+}
+
 function deriveDanmakuView(snapshot: BigVWorkbenchSnapshot): DanmakuViewModel {
   const baseView = snapshot.danmaku;
   const toggles = baseView.toggles;
@@ -402,6 +468,9 @@ const mockDataSource = new WorkbenchMockDataSource({
   onSimulationStatusChange(status) {
     simulationStatus.value = status;
   },
+  onPlanTrace(trace) {
+    recordPlanTrace(trace);
+  },
 });
 
 const { mockDataSourceEnabled } = useWorkbenchDebugSettings();
@@ -426,6 +495,7 @@ const danmakuView = computed(() => deriveDanmakuView(snapshot.value));
 const quotaView = computed(() => snapshot.value.quota);
 const audienceView = computed(() => deriveAudienceViewFromMemory(memorySnapshot.value));
 const reviewView = computed(() => deriveReviewViewFromMemory(memorySnapshot.value));
+const runtimeInsight = computed(createRuntimeInsight);
 
 void refreshMemorySnapshot();
 
@@ -457,6 +527,102 @@ function applyQueueToggles(toggles: RuntimeToggleState[]) {
     (event) => isChannelDisabled(event.type, toggles),
     "通道关闭或自动投递暂停",
   );
+}
+
+function recordPlanTrace(trace: WorkbenchMockPlanTrace) {
+  promptRecords.value = pushLimited(promptRecords.value, promptRecord(trace), 8);
+  generationRecords.value = pushLimited(generationRecords.value, generationRecord(trace), 8);
+  memoryRecords.value = pushLimited(memoryRecords.value, memoryRecordsFor(trace, memorySnapshot.value), 10);
+}
+
+function promptRecord(trace: WorkbenchMockPlanTrace): WorkbenchInsightRecord {
+  const request = trace.generationRequest;
+  return {
+    id: `${trace.id}-prompt`,
+    title: trace.frameLabel,
+    detail: summarizeContext(trace.contextWindow),
+    happenedAt: formatQueueTime(trace.happenedAt),
+    statusLabel: request ? "已组装" : "本地兜底",
+    tone: request ? "ok" : "info",
+    meta: request
+      ? `${request.activeAudienceProfiles.length} 个观众 · ${request.intents.length} 个意图`
+      : "无需 provider 生成",
+    codePreview: request
+      ? buildAudienceBatchGenerationPrompt(request)
+      : "本轮互动意图无需 provider 生成，使用本地兜底文案进入同一投递链路。",
+  };
+}
+
+function generationRecord(trace: WorkbenchMockPlanTrace): WorkbenchInsightRecord {
+  const detail = trace.generatedEvents
+    .slice(0, 3)
+    .map((event) => `${event.audienceName}：${event.content}`)
+    .join(" / ");
+  return {
+    id: `${trace.id}-generation`,
+    title: trace.generationRequest ? "Provider 请求待接入" : "本地兜底生成",
+    detail: detail || "本轮没有生成可投递互动。",
+    happenedAt: formatQueueTime(trace.happenedAt),
+    statusLabel: trace.generatedEvents.length > 0 ? "已生成" : "无输出",
+    tone: trace.generatedEvents.length > 0 ? "ok" : "warn",
+    meta: `${trace.frameLabel} · ${trace.generatedEvents.length} 条`,
+  };
+}
+
+function memoryRecordsFor(
+  trace: WorkbenchMockPlanTrace,
+  memory: MemoryStoreSnapshot | null,
+): WorkbenchInsightRecord[] {
+  const retrieval: WorkbenchInsightRecord = {
+    id: `${trace.id}-memory-retrieval`,
+    title: "记忆检索快照",
+    detail: memory
+      ? `${memory.hostProfile.streamerName} · ${memory.audienceProfiles.length} 个观众画像 · ${memory.sessionRecaps.length} 条场次摘要`
+      : "记忆快照尚未加载，planner 本轮只使用影子观众池。",
+    happenedAt: formatQueueTime(trace.happenedAt),
+    statusLabel: memory ? "已读取" : "未就绪",
+    tone: memory ? "ok" : "warn",
+    meta: trace.frameLabel,
+    evidence: trace.contextWindow.events.slice(0, 2).map((event) => event.summary || event.content),
+  };
+
+  if (trace.memoryWriteCandidates.length === 0) {
+    return [
+      {
+        id: `${trace.id}-memory-write-empty`,
+        title: "写回候选",
+        detail: "本轮未达到写回阈值，不提交长期记忆污染风险。",
+        happenedAt: formatQueueTime(trace.happenedAt),
+        statusLabel: "无候选",
+        tone: "info",
+        meta: trace.frameLabel,
+      },
+      retrieval,
+    ];
+  }
+
+  return [
+    ...trace.memoryWriteCandidates.map((candidate, index) => ({
+      id: `${trace.id}-memory-write-${index}`,
+      title: "写回候选",
+      detail: candidate.summary,
+      happenedAt: formatQueueTime(trace.happenedAt),
+      statusLabel: "待提交",
+      tone: "warn" as const,
+      meta: trace.frameLabel,
+      evidence: candidate.evidence ?? [],
+    })),
+    retrieval,
+  ];
+}
+
+function pushLimited<T>(records: T[], next: T | T[], limit: number) {
+  return [...(Array.isArray(next) ? next : [next]), ...records].slice(0, limit);
+}
+
+function summarizeContext(window: ContextWindowSnapshot) {
+  const summaries = window.events.slice(0, 3).map((event) => event.summary || event.content);
+  return summaries.length ? summaries.join(" / ") : "暂无主播语音，保持低频暖场。";
 }
 
 async function refreshContextWindow() {
@@ -521,6 +687,7 @@ export function useWorkbenchStore() {
     quotaView,
     audienceView,
     reviewView,
+    runtimeInsight,
     contextLoading,
     contextError,
     memorySnapshot,

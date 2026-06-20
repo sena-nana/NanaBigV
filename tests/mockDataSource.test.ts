@@ -5,6 +5,7 @@ import {
   MOCK_SOURCE_INTERVAL_MS,
   isMockInteractionDeliverable,
   WorkbenchMockDataSource,
+  type WorkbenchMockPlanTrace,
 } from "../src/features/workbench/mockDataSource";
 import type {
   MockSourceRecord,
@@ -41,6 +42,10 @@ describe("workbench mock data source", () => {
     expect(deliveredCount(runtime.queue.snapshot().stats)).toBeGreaterThan(0);
     expect(runtime.simulationStatus.plannedIntentCount).toBeGreaterThan(0);
     expect(runtime.simulationStatus.shadowAudienceCount).toBe(240);
+    expect(runtime.planTraces[0]).toMatchObject({
+      frameLabel: "开场反馈",
+    });
+    expect(runtime.planTraces[0].generatedEvents.length).toBeGreaterThan(0);
     runtime.source.pause();
   });
 
@@ -95,6 +100,7 @@ function createRuntime(toggles: RuntimeToggleState[] = defaultToggles()) {
     intervalMs: MOCK_SOURCE_INTERVAL_MS,
   };
   let records: MockSourceRecord[] = [];
+  let planTraces: WorkbenchMockPlanTrace[] = [];
   let simulationStatus = {
     rhythmState: "cold",
     rhythmLabel: "冷场观察",
@@ -146,6 +152,9 @@ function createRuntime(toggles: RuntimeToggleState[] = defaultToggles()) {
     onSimulationStatusChange(nextStatus) {
       simulationStatus = nextStatus;
     },
+    onPlanTrace(trace) {
+      planTraces = [trace, ...planTraces];
+    },
     now: () => Date.now(),
   });
 
@@ -161,6 +170,9 @@ function createRuntime(toggles: RuntimeToggleState[] = defaultToggles()) {
     },
     get records() {
       return records;
+    },
+    get planTraces() {
+      return planTraces;
     },
     get simulationStatus() {
       return simulationStatus;
