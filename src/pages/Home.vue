@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { Send, Trash2 } from "@lucide/vue";
+import { computed, defineAsyncComponent, onMounted, ref } from "vue";
+import { Activity, Send, Trash2 } from "@lucide/vue";
 import BlivechatOutputChannels from "../components/workbench/BlivechatOutputChannels.vue";
 import StatusBadge from "../components/workbench/StatusBadge.vue";
 import ToggleSwitch from "../components/ToggleSwitch.vue";
@@ -14,6 +14,7 @@ import "../styles/workbench.css";
 const {
   danmakuView: view,
   reviewView,
+  runtimeInsight,
   contextLoading,
   contextError,
   refreshContextWindow,
@@ -23,7 +24,11 @@ const {
 } = useWorkbenchStore();
 useProviderSettings();
 
+const WorkbenchRuntimeInsights = defineAsyncComponent(
+  () => import("../components/workbench/WorkbenchRuntimeInsights.vue"),
+);
 const voiceDraft = ref("");
+const runtimeInsightsOpen = ref(false);
 const homeSuggestions = computed(() => reviewView.value.suggestions.slice(0, 3));
 const canSubmitVoice = computed(() => voiceDraft.value.trim().length > 0 && !contextLoading.value);
 const SIMULATION_METRIC_FIELDS: Array<{
@@ -260,7 +265,18 @@ async function clearContextEvents() {
                 <h2 id="output-events-title">模拟互动输出</h2>
                 <p>本地 blivechat 队列记录 enqueue / deliver / throttle</p>
               </div>
-              <StatusBadge :label="mockSourceStateMeta.label" :tone="mockSourceStateMeta.tone" />
+              <div class="home-output-actions">
+                <button
+                  class="button-secondary home-action-button"
+                  type="button"
+                  :aria-pressed="runtimeInsightsOpen"
+                  @click="runtimeInsightsOpen = !runtimeInsightsOpen"
+                >
+                  <Activity :size="15" aria-hidden="true" />
+                  <span>{{ runtimeInsightsOpen ? "收起观测" : "观测详情" }}</span>
+                </button>
+                <StatusBadge :label="mockSourceStateMeta.label" :tone="mockSourceStateMeta.tone" />
+              </div>
             </div>
 
             <div class="home-mock-source">
@@ -300,6 +316,13 @@ async function clearContextEvents() {
                 <StatusBadge :label="record.statusLabel" :tone="record.tone" />
               </div>
             </div>
+
+            <Suspense v-if="runtimeInsightsOpen">
+              <WorkbenchRuntimeInsights :insight="runtimeInsight" />
+              <template #fallback>
+                <div class="home-runtime-loading">正在加载运行观测。</div>
+              </template>
+            </Suspense>
 
             <BlivechatOutputChannels :channels="view.blivechatChannels" />
           </section>
@@ -429,6 +452,14 @@ async function clearContextEvents() {
   flex-wrap: wrap;
 }
 
+.home-output-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .home-action-button {
   display: inline-flex;
   align-items: center;
@@ -461,6 +492,15 @@ async function clearContextEvents() {
   color: var(--err);
   font-size: 12px;
   line-height: 1.45;
+}
+
+.home-runtime-loading {
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .home-context-panel--events {

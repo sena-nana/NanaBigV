@@ -1,10 +1,11 @@
 import type { ContextEventInput, ContextSourceKind, ContextWindowSnapshot } from "../context/types";
-import type { MemoryStoreSnapshot } from "../memory/types";
+import type { MemoryStoreSnapshot, MemoryWriteInput } from "../memory/types";
 import {
   AudiencePlanner,
+  type AudienceBatchGenerationRequest,
   createInitialAudienceSimulationStatus,
 } from "./audiencePlanner";
-import type { BlivechatEventQueue } from "./eventRuntime";
+import type { BlivechatEventInput, BlivechatEventQueue } from "./eventRuntime";
 import type {
   AudienceSimulationStatus,
   InteractionType,
@@ -36,7 +37,18 @@ interface WorkbenchMockDataSourceOptions {
   getMemorySnapshot?: () => MemoryStoreSnapshot | null;
   onChange: (status: MockSourceStatus, records: MockSourceRecord[]) => void;
   onSimulationStatusChange?: (status: AudienceSimulationStatus) => void;
+  onPlanTrace?: (trace: WorkbenchMockPlanTrace) => void;
   now?: () => number;
+}
+
+export interface WorkbenchMockPlanTrace {
+  id: string;
+  frameLabel: string;
+  happenedAt: number;
+  contextWindow: ContextWindowSnapshot;
+  generationRequest: AudienceBatchGenerationRequest | null;
+  generatedEvents: BlivechatEventInput[];
+  memoryWriteCandidates: MemoryWriteInput[];
 }
 
 const SOURCE_LABELS: Record<ContextSourceKind, string> = {
@@ -190,6 +202,15 @@ export class WorkbenchMockDataSource {
         now: this.now(),
       });
       this.simulationStatus = plan.status;
+      this.options.onPlanTrace?.({
+        id: `mock-plan-${this.status.tickCount + 1}-${frame.id}`,
+        frameLabel: frame.label,
+        happenedAt: this.now(),
+        contextWindow: contextSnapshot,
+        generationRequest: plan.generationRequest,
+        generatedEvents: plan.events,
+        memoryWriteCandidates: plan.memoryWriteCandidates,
+      });
 
       const interactionLabels: string[] = [];
       for (const [index, event] of plan.events.entries()) {
