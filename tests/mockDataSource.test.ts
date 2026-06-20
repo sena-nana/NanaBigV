@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContextEventInput, ContextWindowSnapshot } from "../src/features/context/types";
+import type { ProviderError } from "../src/features/provider/types";
+import type { AudienceProviderBatchGenerationResult } from "../src/features/workbench/audienceGeneration";
+import type { AudienceBatchGenerationRequest } from "../src/features/workbench/audiencePlanner";
 import { createLocalBlivechatQueue } from "../src/features/workbench/eventRuntime";
 import {
   MOCK_SOURCE_INTERVAL_MS,
@@ -91,9 +94,90 @@ describe("workbench mock data source", () => {
     expect(runtime.records[0].contextLabels).toEqual(["视觉上下文 预留未写入窗口"]);
     expect(runtime.records[1].contextLabels).toEqual(["Echo-Live"]);
   });
+
+  it("uses provider generation when available and falls back locally on provider errors", async () => {
+    const providerRuntime = createRuntime(defaultToggles(), async (request) => ({
+      ok: true,
+      events: [
+        {
+          type: request.intents[0].interactionType,
+          audienceName: request.intents[0].audienceName,
+          content: "provider 生成内容",
+        },
+      ],
+      latencyMs: 88,
+      model: "gpt-4.1-mini",
+    }));
+    providerRuntime.source.start();
+    await vi.advanceTimersByTimeAsync(MOCK_SOURCE_INTERVAL_MS * 6);
+    providerRuntime.source.pause();
+
+    const providerTrace = providerRuntime.planTraces.find(
+      (trace) => trace.generationSource === "provider",
+    );
+    expect(providerTrace).toMatchObject({
+      generationSource: "provider",
+      providerLatencyMs: 88,
+      providerModel: "gpt-4.1-mini",
+    });
+    expect(
+      providerRuntime.queue.snapshot().records.some(
+        (record) => record.event.content === "provider 生成内容",
+      ),
+    ).toBe(true);
+
+    const providerError: ProviderError = {
+      kind: "http_status",
+      message: "provider 返回 HTTP 401",
+      statusCode: 401,
+    };
+    const fallbackRuntime = createRuntime(defaultToggles(), async () => ({
+      ok: false,
+      error: providerError,
+    }));
+    fallbackRuntime.source.start();
+    await vi.advanceTimersByTimeAsync(MOCK_SOURCE_INTERVAL_MS * 6);
+    fallbackRuntime.source.pause();
+
+    const fallbackTrace = fallbackRuntime.planTraces.find(
+      (trace) => trace.generationSource === "local_fallback" && trace.generationError,
+    );
+    expect(fallbackTrace).toMatchObject({
+      generationSource: "local_fallback",
+      generationError: providerError,
+    });
+    expect(fallbackTrace?.generatedEvents[0].content).not.toBe("provider 生成内容");
+    expect(deliveredCount(fallbackRuntime.queue.snapshot().stats)).toBeGreaterThan(0);
+  });
+
+  it("keeps the mock loop running when provider generation throws", async () => {
+    const runtime = createRuntime(defaultToggles(), async () => {
+      throw new Error("unknown command");
+    });
+
+    runtime.source.start();
+    await vi.advanceTimersByTimeAsync(MOCK_SOURCE_INTERVAL_MS);
+    runtime.source.pause();
+
+    expect(runtime.status.state).toBe("paused");
+    expect(runtime.status.error).toBeUndefined();
+    expect(runtime.planTraces[0]).toMatchObject({
+      generationSource: "local_fallback",
+      generationError: {
+        kind: "transport",
+        message: expect.stringContaining("unknown command"),
+      },
+    });
+    expect(deliveredCount(runtime.queue.snapshot().stats)).toBeGreaterThan(0);
+  });
 });
 
-function createRuntime(toggles: RuntimeToggleState[] = defaultToggles()) {
+function createRuntime(
+  toggles: RuntimeToggleState[] = defaultToggles(),
+  generateAudienceBatch?: (
+    request: AudienceBatchGenerationRequest,
+  ) => Promise<AudienceProviderBatchGenerationResult>,
+) {
   const queue = createLocalBlivechatQueue(() => Date.now());
   const submitted: ContextEventInput[] = [];
   let contextWindow: ContextWindowSnapshot = emptyContextWindow();
@@ -159,6 +243,7 @@ function createRuntime(toggles: RuntimeToggleState[] = defaultToggles()) {
     onPlanTrace(trace) {
       planTraces = [trace, ...planTraces];
     },
+    generateAudienceBatch,
     now: () => Date.now(),
   });
 

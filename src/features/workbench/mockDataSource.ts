@@ -1,5 +1,7 @@
 import type { ContextEventInput, ContextSourceKind, ContextWindowSnapshot } from "../context/types";
 import type { MemoryStoreSnapshot, MemoryWriteInput } from "../memory/types";
+import type { ProviderError } from "../provider/types";
+import type { AudienceProviderBatchGenerationResult } from "./audienceGeneration";
 import {
   AudiencePlanner,
   type AudienceBatchGenerationRequest,
@@ -38,8 +40,13 @@ interface WorkbenchMockDataSourceOptions {
   onChange: (status: MockSourceStatus, records: MockSourceRecord[]) => void;
   onSimulationStatusChange?: (status: AudienceSimulationStatus) => void;
   onPlanTrace?: (trace: WorkbenchMockPlanTrace) => void;
+  generateAudienceBatch?: (
+    request: AudienceBatchGenerationRequest,
+  ) => Promise<AudienceProviderBatchGenerationResult>;
   now?: () => number;
 }
+
+export type WorkbenchGenerationSource = "provider" | "local_fallback";
 
 export interface WorkbenchMockPlanTrace {
   id: string;
@@ -47,6 +54,10 @@ export interface WorkbenchMockPlanTrace {
   happenedAt: number;
   contextWindow: ContextWindowSnapshot;
   generationRequest: AudienceBatchGenerationRequest | null;
+  generationSource: WorkbenchGenerationSource;
+  generationError?: ProviderError;
+  providerLatencyMs?: number;
+  providerModel?: string;
   generatedEvents: BlivechatEventInput[];
   memoryWriteCandidates: MemoryWriteInput[];
 }
@@ -202,18 +213,23 @@ export class WorkbenchMockDataSource {
         now: this.now(),
       });
       this.simulationStatus = plan.status;
+      const generation = await this.generateEvents(plan.generationRequest, plan.events);
       this.options.onPlanTrace?.({
         id: `mock-plan-${this.status.tickCount + 1}-${frame.id}`,
         frameLabel: frame.label,
         happenedAt: this.now(),
         contextWindow: contextSnapshot,
         generationRequest: plan.generationRequest,
-        generatedEvents: plan.events,
+        generationSource: generation.source,
+        generationError: generation.error,
+        providerLatencyMs: generation.latencyMs,
+        providerModel: generation.model,
+        generatedEvents: generation.events,
         memoryWriteCandidates: plan.memoryWriteCandidates,
       });
 
       const interactionLabels: string[] = [];
-      for (const [index, event] of plan.events.entries()) {
+      for (const [index, event] of generation.events.entries()) {
         const happenedAt = this.now() + index * 150;
         this.options.queue.enqueue(event, happenedAt);
         this.options.queue.deliverNext(
@@ -249,6 +265,52 @@ export class WorkbenchMockDataSource {
       this.contextInFlight = false;
       this.notify();
     }
+  }
+
+  private async generateEvents(
+    request: AudienceBatchGenerationRequest | null,
+    fallbackEvents: BlivechatEventInput[],
+  ): Promise<{
+    source: WorkbenchGenerationSource;
+    events: BlivechatEventInput[];
+    error?: ProviderError;
+    latencyMs?: number;
+    model?: string;
+  }> {
+    if (!request) {
+      return { source: "local_fallback", events: fallbackEvents };
+    }
+
+    const generateAudienceBatch = this.options.generateAudienceBatch;
+    if (!generateAudienceBatch) {
+      return { source: "local_fallback", events: fallbackEvents };
+    }
+
+    let result: AudienceProviderBatchGenerationResult;
+    try {
+      result = await generateAudienceBatch(request);
+    } catch (error) {
+      return {
+        source: "local_fallback",
+        events: fallbackEvents,
+        error: providerGenerationException(error),
+      };
+    }
+
+    if (!result.ok) {
+      return {
+        source: "local_fallback",
+        events: fallbackEvents,
+        error: result.error,
+      };
+    }
+
+    return {
+      source: "provider",
+      events: result.events,
+      latencyMs: result.latencyMs,
+      model: result.model,
+    };
   }
 
   private pushRecord(
@@ -298,4 +360,11 @@ function formatTime(value: number) {
     second: "2-digit",
     hour12: false,
   });
+}
+
+function providerGenerationException(error: unknown): ProviderError {
+  return {
+    kind: "transport",
+    message: `provider 生成调用失败：${error instanceof Error ? error.message : String(error)}`,
+  };
 }
