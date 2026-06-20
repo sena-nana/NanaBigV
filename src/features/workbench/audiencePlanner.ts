@@ -359,6 +359,7 @@ export function parseAudienceBatchGenerationResult(
     }
     events.push({
       type: intent.interactionType,
+      audienceId: intent.audienceId,
       audienceName: intent.audienceName,
       content: candidate.content.trim(),
       amountLabel: typeof candidate.amountLabel === "string" ? candidate.amountLabel : amountLabelFor(intent),
@@ -374,6 +375,7 @@ export function generateLocalAudienceEvents(
   const topic = latestContextText(contextWindow) || "当前直播节奏";
   return intents.map((intent) => ({
     type: intent.interactionType,
+    audienceId: intent.audienceId,
     audienceName: intent.audienceName,
     content: localContentForIntent(intent, topic),
     amountLabel: amountLabelFor(intent),

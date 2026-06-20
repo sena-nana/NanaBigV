@@ -96,6 +96,9 @@ describe("audience planner", () => {
       { ...request, maxOutputCount: 1, intents: [request.intents[0]] },
     );
     expect(valid.ok).toBe(true);
+    expect(valid).toMatchObject({
+      events: [{ audienceId: request.intents[0].audienceId }],
+    });
 
     const invalid = parseAudienceBatchGenerationResult(
       JSON.stringify([{ audienceId: "unknown", type: "danmaku", content: "x" }]),
