@@ -8,6 +8,11 @@ export default defineConfig({
   title: "BigV",
   description: "AI audience simulation control console for a single livestream room.",
   base,
+  vite: {
+    build: {
+      target: "esnext",
+    },
+  },
   themeConfig: {
     nav: [
       { text: "概览", link: "/" },

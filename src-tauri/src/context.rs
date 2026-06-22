@@ -80,12 +80,12 @@ impl ContextWindowState {
     ) -> Result<ContextWindowSnapshot, String> {
         let trimmed = input.content.trim();
         if trimmed.is_empty() {
-            return Err("主播语音文本不能为空".to_string());
+            return Err(format!("{}文本不能为空", source_label(input.source)));
         }
 
         self.prune(now);
 
-        if input.source == ContextSourceKind::Voice {
+        if input.source != ContextSourceKind::Vision {
             self.next_seq += 1;
             let content = limit_chars(trimmed, MAX_CONTENT_CHARS);
             let summary = input
@@ -144,11 +144,23 @@ impl ContextWindowState {
 
 fn source_statuses(events: &[ContextEvent], now: u64) -> Vec<ContextSourceStatus> {
     vec![
-        voice_status(events, now),
-        reserved_status(
+        active_source_status(
+            events,
+            now,
+            ContextSourceKind::Voice,
+            "待输入",
+            "等待本地 ASR 或手动面板提交主播语音文本。",
+            "最近 60 秒内收到主播语音文本",
+            "最近 5 分钟窗口内有主播语音文本，但 60 秒内没有新输入。",
+        ),
+        active_source_status(
+            events,
+            now,
             ContextSourceKind::EchoLive,
-            "Echo-Live",
-            "Echo-Live 输入适配器已预留，阶段 3 不接入真实事件。",
+            "未连接",
+            "等待 Echo-Live WebSocket 文本输入。",
+            "最近 60 秒内收到 Echo-Live 文本",
+            "最近 5 分钟窗口内有 Echo-Live 文本，但 60 秒内没有新输入。",
         ),
         reserved_status(
             ContextSourceKind::Vision,
@@ -158,45 +170,50 @@ fn source_statuses(events: &[ContextEvent], now: u64) -> Vec<ContextSourceStatus
     ]
 }
 
-fn voice_status(events: &[ContextEvent], now: u64) -> ContextSourceStatus {
-    let voice_events: Vec<&ContextEvent> = events
+fn active_source_status(
+    events: &[ContextEvent],
+    now: u64,
+    source: ContextSourceKind,
+    waiting_status_label: &str,
+    waiting_summary: &str,
+    online_summary_prefix: &str,
+    idle_summary_prefix: &str,
+) -> ContextSourceStatus {
+    let source_events: Vec<&ContextEvent> = events
         .iter()
-        .filter(|event| event.source == ContextSourceKind::Voice)
+        .filter(|event| event.source == source)
         .collect();
-    let last_event_at = voice_events.first().map(|event| event.received_at);
+    let last_event_at = source_events.first().map(|event| event.received_at);
+    let label = source_label(source);
 
     let (status_label, tone, summary) = match last_event_at {
         Some(value) if now.saturating_sub(value) <= ONLINE_SECONDS * 1_000 => (
             "在线",
             "ok",
             format!(
-                "最近 60 秒内收到主播语音文本，当前窗口有 {} 条输入。",
-                voice_events.len()
+                "{online_summary_prefix}，当前窗口有 {} 条输入。",
+                source_events.len()
             ),
         ),
         Some(_) => (
             "空闲",
             "warn",
             format!(
-                "最近 5 分钟窗口内有 {} 条主播语音文本，但 60 秒内没有新输入。",
-                voice_events.len()
+                "{idle_summary_prefix}当前窗口有 {} 条输入。",
+                source_events.len()
             ),
         ),
-        None => (
-            "待输入",
-            "info",
-            "等待本地 ASR 或手动面板提交主播语音文本。".to_string(),
-        ),
+        None => (waiting_status_label, "info", waiting_summary.to_string()),
     };
 
     ContextSourceStatus {
-        source: ContextSourceKind::Voice,
-        label: "主播语音".to_string(),
+        source,
+        label: label.to_string(),
         status_label: status_label.to_string(),
         tone: tone.to_string(),
         summary,
         last_event_at,
-        event_count: voice_events.len(),
+        event_count: source_events.len(),
     }
 }
 
@@ -209,6 +226,14 @@ fn reserved_status(source: ContextSourceKind, label: &str, summary: &str) -> Con
         summary: summary.to_string(),
         last_event_at: None,
         event_count: 0,
+    }
+}
+
+fn source_label(source: ContextSourceKind) -> &'static str {
+    match source {
+        ContextSourceKind::Voice => "主播语音",
+        ContextSourceKind::EchoLive => "Echo-Live",
+        ContextSourceKind::Vision => "视觉上下文",
     }
 }
 
@@ -324,7 +349,7 @@ mod tests {
     }
 
     #[test]
-    fn reserved_sources_serialize_but_do_not_enter_window() {
+    fn echo_live_input_enters_window_as_enhancement_event() {
         let mut state = ContextWindowState::default();
         let input = ContextEventInput {
             source: ContextSourceKind::EchoLive,
@@ -339,7 +364,26 @@ mod tests {
 
         let snapshot = state.submit(input, 10_000).unwrap();
 
+        assert_eq!(snapshot.events.len(), 1);
+        assert_eq!(snapshot.events[0].source, ContextSourceKind::EchoLive);
+        assert_eq!(snapshot.events[0].summary, "外部状态");
+        assert_eq!(snapshot.source_statuses[1].status_label, "在线");
+    }
+
+    #[test]
+    fn vision_input_remains_reserved_and_does_not_enter_window() {
+        let mut state = ContextWindowState::default();
+        let input = ContextEventInput {
+            source: ContextSourceKind::Vision,
+            content: "画面状态".to_string(),
+            occurred_at: None,
+            confidence: Some(0.7),
+            summary: Some("画面状态".to_string()),
+        };
+
+        let snapshot = state.submit(input, 10_000).unwrap();
+
         assert!(snapshot.events.is_empty());
-        assert_eq!(snapshot.source_statuses[1].status_label, "预留接口");
+        assert_eq!(snapshot.source_statuses[2].status_label, "预留接口");
     }
 }

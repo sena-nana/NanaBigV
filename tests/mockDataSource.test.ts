@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContextEventInput, ContextWindowSnapshot } from "../src/features/context/types";
+import type { ProviderError } from "../src/features/provider/types";
+import type { AudienceProviderBatchGenerationResult } from "../src/features/workbench/audienceGeneration";
+import type { AudienceBatchGenerationRequest } from "../src/features/workbench/audiencePlanner";
 import { createLocalBlivechatQueue } from "../src/features/workbench/eventRuntime";
 import {
   MOCK_SOURCE_INTERVAL_MS,
   isMockInteractionDeliverable,
   WorkbenchMockDataSource,
+  type WorkbenchMockPlanTrace,
 } from "../src/features/workbench/mockDataSource";
 import type {
   MockSourceRecord,
@@ -41,6 +45,10 @@ describe("workbench mock data source", () => {
     expect(deliveredCount(runtime.queue.snapshot().stats)).toBeGreaterThan(0);
     expect(runtime.simulationStatus.plannedIntentCount).toBeGreaterThan(0);
     expect(runtime.simulationStatus.shadowAudienceCount).toBe(240);
+    expect(runtime.planTraces[0]).toMatchObject({
+      frameLabel: "开场反馈",
+    });
+    expect(runtime.planTraces[0].generatedEvents.length).toBeGreaterThan(0);
     runtime.source.pause();
   });
 
@@ -66,7 +74,7 @@ describe("workbench mock data source", () => {
     expect(throttledCount(stats)).toBeGreaterThan(0);
   });
 
-  it("submits reserved context sources without adding them to context events", async () => {
+  it("submits Echo-Live context while keeping vision reserved", async () => {
     const runtime = createRuntime();
 
     runtime.source.start();
@@ -74,17 +82,82 @@ describe("workbench mock data source", () => {
     runtime.source.pause();
 
     expect(runtime.submitted.map((event) => event.source)).toEqual(["voice", "echo_live", "vision"]);
-    expect(runtime.contextWindow.events).toHaveLength(1);
+    expect(runtime.contextWindow.events).toHaveLength(2);
     expect(runtime.contextWindow.events[0]).toMatchObject({
+      source: "echo_live",
+      summary: "外部场控提示隐藏路线",
+    });
+    expect(runtime.contextWindow.events[1]).toMatchObject({
       source: "voice",
       summary: "主播说明今晚流程",
     });
     expect(runtime.records[0].contextLabels).toEqual(["视觉上下文 预留未写入窗口"]);
-    expect(runtime.records[1].contextLabels).toEqual(["Echo-Live 预留未写入窗口"]);
+    expect(runtime.records[1].contextLabels).toEqual(["Echo-Live"]);
   });
+
+  it("uses provider generation when available and falls back locally on provider errors", async () => {
+    const providerRuntime = createRuntime(defaultToggles(), async (request) => ({
+      ok: true,
+      events: [
+        {
+          type: request.intents[0].interactionType,
+          audienceName: request.intents[0].audienceName,
+          content: "provider 生成内容",
+        },
+      ],
+      latencyMs: 88,
+      model: "gpt-4.1-mini",
+    }));
+    providerRuntime.source.start();
+    await vi.advanceTimersByTimeAsync(MOCK_SOURCE_INTERVAL_MS * 6);
+    providerRuntime.source.pause();
+
+    const providerTrace = providerRuntime.planTraces.find(
+      (trace) => trace.generationSource === "provider",
+    );
+    expect(providerTrace).toMatchObject({
+      generationSource: "provider",
+      providerLatencyMs: 88,
+      providerModel: "gpt-4.1-mini",
+    });
+    expect(
+      providerRuntime.queue.snapshot().records.some(
+        (record) => record.event.content === "provider 生成内容",
+      ),
+    ).toBe(true);
+
+    const providerError: ProviderError = {
+      kind: "http_status",
+      message: "provider 返回 HTTP 401",
+      statusCode: 401,
+    };
+    const fallbackRuntime = createRuntime(defaultToggles(), async () => ({
+      ok: false,
+      error: providerError,
+    }));
+    fallbackRuntime.source.start();
+    await vi.advanceTimersByTimeAsync(MOCK_SOURCE_INTERVAL_MS * 6);
+    fallbackRuntime.source.pause();
+
+    const fallbackTrace = fallbackRuntime.planTraces.find(
+      (trace) => trace.generationSource === "local_fallback" && trace.generationError,
+    );
+    expect(fallbackTrace).toMatchObject({
+      generationSource: "local_fallback",
+      generationError: providerError,
+    });
+    expect(fallbackTrace?.generatedEvents[0].content).not.toBe("provider 生成内容");
+    expect(deliveredCount(fallbackRuntime.queue.snapshot().stats)).toBeGreaterThan(0);
+  });
+
 });
 
-function createRuntime(toggles: RuntimeToggleState[] = defaultToggles()) {
+function createRuntime(
+  toggles: RuntimeToggleState[] = defaultToggles(),
+  generateAudienceBatch?: (
+    request: AudienceBatchGenerationRequest,
+  ) => Promise<AudienceProviderBatchGenerationResult>,
+) {
   const queue = createLocalBlivechatQueue(() => Date.now());
   const submitted: ContextEventInput[] = [];
   let contextWindow: ContextWindowSnapshot = emptyContextWindow();
@@ -95,6 +168,7 @@ function createRuntime(toggles: RuntimeToggleState[] = defaultToggles()) {
     intervalMs: MOCK_SOURCE_INTERVAL_MS,
   };
   let records: MockSourceRecord[] = [];
+  let planTraces: WorkbenchMockPlanTrace[] = [];
   let simulationStatus = {
     rhythmState: "cold",
     rhythmLabel: "冷场观察",
@@ -113,7 +187,7 @@ function createRuntime(toggles: RuntimeToggleState[] = defaultToggles()) {
     queue,
     async submitContextEvent(event) {
       submitted.push(event);
-      if (event.source === "voice") {
+      if (event.source !== "vision") {
         contextWindow = {
           ...contextWindow,
           events: [
@@ -146,6 +220,10 @@ function createRuntime(toggles: RuntimeToggleState[] = defaultToggles()) {
     onSimulationStatusChange(nextStatus) {
       simulationStatus = nextStatus;
     },
+    onPlanTrace(trace) {
+      planTraces = [trace, ...planTraces];
+    },
+    generateAudienceBatch,
     now: () => Date.now(),
   });
 
@@ -161,6 +239,9 @@ function createRuntime(toggles: RuntimeToggleState[] = defaultToggles()) {
     },
     get records() {
       return records;
+    },
+    get planTraces() {
+      return planTraces;
     },
     get simulationStatus() {
       return simulationStatus;
@@ -207,9 +288,9 @@ function emptyContextWindow(): ContextWindowSnapshot {
       {
         source: "echo_live",
         label: "Echo-Live",
-        statusLabel: "预留接口",
+        statusLabel: "未连接",
         tone: "info",
-        summary: "Echo-Live 输入适配器已预留，阶段 3 不接入真实事件。",
+        summary: "等待 Echo-Live WebSocket 文本输入。",
         eventCount: 0,
       },
       {

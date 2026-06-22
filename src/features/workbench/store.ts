@@ -7,12 +7,22 @@ import {
   loadContextWindow,
   submitContextEvent,
 } from "../context/api";
-import { loadMemorySnapshot } from "../memory/api";
+import {
+  EchoLiveWebSocketClient,
+  createInitialEchoLiveConnectionStatus,
+  type EchoLiveConnectionStatus,
+  type EchoLiveTextPayload,
+} from "../context/echoLiveClient";
+import { loadMemorySnapshot, submitMemoryWrite } from "../memory/api";
 import {
   deriveAudienceViewFromMemory,
   deriveReviewViewFromMemory,
 } from "../memory/viewModels";
-import { createInitialAudienceSimulationStatus } from "./audiencePlanner";
+import {
+  buildAudienceBatchGenerationPrompt,
+  createInitialAudienceSimulationStatus,
+} from "./audiencePlanner";
+import { generateAudienceBatch } from "./audienceGeneration";
 import {
   createLocalBlivechatQueue,
   type BlivechatEventInput,
@@ -24,10 +34,16 @@ import {
   createInitialMockSourceStatus,
   isMockInteractionDeliverable,
   WorkbenchMockDataSource,
+  type WorkbenchMockPlanTrace,
 } from "./mockDataSource";
 import { BIGV_WORKBENCH_SNAPSHOT } from "./mockSnapshot";
 import type { ContextWindowSnapshot } from "../context/types";
-import type { MemoryStoreSnapshot } from "../memory/types";
+import type {
+  MemoryStoreSnapshot,
+  MemoryWriteInput,
+  MemoryWriteResult,
+  MemoryWriteStatus,
+} from "../memory/types";
 import type {
   BlivechatRenderChannel,
   BlivechatRenderItem,
@@ -40,6 +56,8 @@ import type {
   RuntimeNotice,
   RuntimeToggleState,
   AudienceSimulationStatus,
+  WorkbenchInsightRecord,
+  WorkbenchRuntimeInsight,
 } from "./types";
 
 const STORAGE_KEY = `${appConfig.storageKeyPrefix}.workbench`;
@@ -60,9 +78,9 @@ const EMPTY_CONTEXT_WINDOW: ContextWindowSnapshot = {
     {
       source: "echo_live",
       label: "Echo-Live",
-      statusLabel: "预留接口",
+      statusLabel: "未连接",
       tone: "info",
-      summary: "Echo-Live 输入适配器已预留，阶段 3 不接入真实事件。",
+      summary: "等待 Echo-Live WebSocket 文本输入。",
       eventCount: 0,
     },
     {
@@ -79,12 +97,16 @@ const EMPTY_CONTEXT_WINDOW: ContextWindowSnapshot = {
 const contextWindow = ref<ContextWindowSnapshot>(structuredClone(EMPTY_CONTEXT_WINDOW));
 const contextLoading = ref(false);
 const contextError = ref<string | null>(null);
+const echoLiveStatus = ref<EchoLiveConnectionStatus>(createInitialEchoLiveConnectionStatus());
 const memorySnapshot = ref<MemoryStoreSnapshot | null>(null);
 const memoryLoading = ref(false);
 const memoryError = ref<string | null>(null);
 const mockSourceStatus = ref(createInitialMockSourceStatus());
 const mockSourceRecords = ref<MockSourceRecord[]>([]);
 const simulationStatus = ref<AudienceSimulationStatus>(createInitialAudienceSimulationStatus());
+const promptRecords = ref<WorkbenchInsightRecord[]>([]);
+const generationRecords = ref<WorkbenchInsightRecord[]>([]);
+const memoryRecords = ref<WorkbenchInsightRecord[]>([]);
 const baselineInteractionSeed: BlivechatEventInput[] = [
   {
     type: "danmaku",
@@ -124,6 +146,19 @@ const BLIVECHAT_RENDER_ACTION_META = {
   deliver: { label: "已投递", tone: "ok" },
   throttle: { label: "被节流", tone: "warn" },
 } satisfies Record<BlivechatRenderItem["action"], { label: string; tone: BlivechatRenderItem["tone"] }>;
+
+type WorkbenchMemoryWriteOutcome =
+  | { candidate: MemoryWriteInput; result: MemoryWriteResult }
+  | { candidate: MemoryWriteInput; error: string };
+
+const MEMORY_WRITE_STATUS_META = {
+  accepted: { label: "已写回", tone: "ok" },
+  quarantined: { label: "已隔离", tone: "warn" },
+  rejected: { label: "已拒绝", tone: "warn" },
+} satisfies Record<
+  MemoryWriteStatus,
+  { label: string; tone: WorkbenchInsightRecord["tone"] }
+>;
 
 function cloneSnapshot<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -247,6 +282,14 @@ function deriveNotices(view: DanmakuViewModel): RuntimeNotice[] {
       tone: "error",
     });
   }
+  if (echoLiveStatus.value.error) {
+    notices.unshift({
+      id: "runtime-echo-live-error",
+      title: "Echo-Live 连接异常",
+      detail: echoLiveStatus.value.error,
+      tone: "error",
+    });
+  }
   if (memoryError.value) {
     notices.unshift({
       id: "runtime-memory-error",
@@ -259,7 +302,54 @@ function deriveNotices(view: DanmakuViewModel): RuntimeNotice[] {
 }
 
 function deriveContextSources(window: ContextWindowSnapshot): InputSourceStatus[] {
-  return window.sourceStatuses.map((source) => ({
+  return window.sourceStatuses.map((source) => {
+    if (source.source === "echo_live") {
+      return mergeEchoLiveSourceStatus(source);
+    }
+    return contextSourceStatus(source);
+  });
+}
+
+function mergeEchoLiveSourceStatus(
+  source: ContextWindowSnapshot["sourceStatuses"][number],
+): InputSourceStatus {
+  const connection = echoLiveStatus.value;
+  const base = contextSourceStatus(source);
+  if (connection.state === "connecting") {
+    return {
+      ...base,
+      statusLabel: connection.statusLabel,
+      tone: connection.tone,
+      summary: `正在连接 ${connection.url}`,
+    };
+  }
+  if (connection.state === "connected" && source.eventCount === 0) {
+    return {
+      ...base,
+      statusLabel: connection.statusLabel,
+      tone: connection.tone,
+      summary: "Echo-Live WebSocket 已连接，等待文本广播。",
+      lastEventAt: connection.lastMessageAt,
+    };
+  }
+  if (connection.state === "error") {
+    return {
+      ...base,
+      statusLabel: connection.statusLabel,
+      tone: connection.tone,
+      summary: connection.error ?? "Echo-Live WebSocket 连接异常。",
+    };
+  }
+  return {
+    ...base,
+    lastEventAt: base.lastEventAt ?? connection.lastMessageAt,
+  };
+}
+
+function contextSourceStatus(
+  source: ContextWindowSnapshot["sourceStatuses"][number],
+): InputSourceStatus {
+  return {
     key: source.source,
     source: source.source,
     label: source.label,
@@ -268,7 +358,7 @@ function deriveContextSources(window: ContextWindowSnapshot): InputSourceStatus[
     summary: source.summary,
     lastEventAt: source.lastEventAt,
     eventCount: source.eventCount,
-  }));
+  };
 }
 
 function deriveBlivechatChannels(queueSnapshot: BlivechatQueueSnapshot): BlivechatRenderChannel[] {
@@ -326,6 +416,63 @@ function formatQueueTime(value: number) {
     second: "2-digit",
     hour12: false,
   });
+}
+
+function createRuntimeInsight(): WorkbenchRuntimeInsight {
+  const queueSnapshot = localEventQueueSnapshot.value;
+  return {
+    updatedAt: formatQueueTime(Date.now()),
+    sections: [
+      {
+        id: "inputs",
+        title: "最近输入",
+        emptyText: "暂无主播语音输入。",
+        records: contextWindow.value.events.slice(0, 5).map((event) => ({
+          id: event.id,
+          title: event.summary,
+          detail: event.content,
+          happenedAt: formatQueueTime(event.receivedAt),
+          statusLabel: event.source,
+          tone: "info" as const,
+        })),
+      },
+      {
+        id: "prompts",
+        title: "提示组装",
+        emptyText: "等待 mock 数据源产生编排记录。",
+        records: promptRecords.value,
+      },
+      {
+        id: "generations",
+        title: "生成结果",
+        emptyText: "等待本地生成或 provider 生成结果。",
+        records: generationRecords.value,
+      },
+      {
+        id: "deliveries",
+        title: "投递结果",
+        emptyText: "暂无投递协议记录。",
+        records: queueSnapshot.records.slice(0, 8).map((record) => {
+          const item = recordToBlivechatRenderItem(record);
+          return {
+            id: item.id,
+            title: item.audienceName,
+            detail: item.content,
+            happenedAt: item.happenedAt,
+            statusLabel: item.statusLabel,
+            tone: item.tone,
+            meta: `${item.type}${item.reasonLabel ? ` · ${item.reasonLabel}` : ""}`,
+          };
+        }),
+      },
+      {
+        id: "memory",
+        title: "记忆检索与写回",
+        emptyText: "等待记忆检索或写回候选记录。",
+        records: memoryRecords.value,
+      },
+    ],
+  };
 }
 
 function deriveDanmakuView(snapshot: BigVWorkbenchSnapshot): DanmakuViewModel {
@@ -402,6 +549,18 @@ const mockDataSource = new WorkbenchMockDataSource({
   onSimulationStatusChange(status) {
     simulationStatus.value = status;
   },
+  onPlanTrace(trace) {
+    recordPlanTrace(trace);
+  },
+  generateAudienceBatch,
+});
+const echoLiveClient = new EchoLiveWebSocketClient({
+  async submitText(payload) {
+    await submitEchoLiveContext(payload);
+  },
+  onStatusChange(status) {
+    echoLiveStatus.value = status;
+  },
 });
 
 const { mockDataSourceEnabled } = useWorkbenchDebugSettings();
@@ -426,6 +585,7 @@ const danmakuView = computed(() => deriveDanmakuView(snapshot.value));
 const quotaView = computed(() => snapshot.value.quota);
 const audienceView = computed(() => deriveAudienceViewFromMemory(memorySnapshot.value));
 const reviewView = computed(() => deriveReviewViewFromMemory(memorySnapshot.value));
+const runtimeInsight = computed(createRuntimeInsight);
 
 void refreshMemorySnapshot();
 
@@ -457,6 +617,183 @@ function applyQueueToggles(toggles: RuntimeToggleState[]) {
     (event) => isChannelDisabled(event.type, toggles),
     "通道关闭或自动投递暂停",
   );
+}
+
+function recordPlanTrace(trace: WorkbenchMockPlanTrace) {
+  promptRecords.value = pushLimited(promptRecords.value, promptRecord(trace), 8);
+  generationRecords.value = pushLimited(generationRecords.value, generationRecord(trace), 8);
+  void recordMemoryWriteback(trace);
+}
+
+async function recordMemoryWriteback(trace: WorkbenchMockPlanTrace) {
+  const outcomes = await submitTraceMemoryWrites(trace);
+  memoryRecords.value = pushLimited(
+    memoryRecords.value,
+    memoryRecordsFor(trace, memorySnapshot.value, outcomes),
+    10,
+  );
+}
+
+async function submitTraceMemoryWrites(
+  trace: WorkbenchMockPlanTrace,
+): Promise<WorkbenchMemoryWriteOutcome[]> {
+  const outcomes: WorkbenchMemoryWriteOutcome[] = [];
+  for (const candidate of trace.memoryWriteCandidates) {
+    try {
+      const result = await submitMemoryWrite(candidate);
+      memorySnapshot.value = result.snapshot;
+      outcomes.push({ candidate, result });
+    } catch (error) {
+      const message = toErrorMessage(error);
+      memoryError.value = `提交记忆写回失败：${message}`;
+      outcomes.push({ candidate, error: message });
+    }
+  }
+  return outcomes;
+}
+
+function promptRecord(trace: WorkbenchMockPlanTrace): WorkbenchInsightRecord {
+  const request = trace.generationRequest;
+  return {
+    id: `${trace.id}-prompt`,
+    title: trace.frameLabel,
+    detail: summarizeContext(trace.contextWindow),
+    happenedAt: formatQueueTime(trace.happenedAt),
+    statusLabel: request ? "已组装" : "本地兜底",
+    tone: request ? "ok" : "info",
+    meta: request
+      ? `${request.activeAudienceProfiles.length} 个观众 · ${request.intents.length} 个意图`
+      : "无需 provider 生成",
+    codePreview: request
+      ? buildAudienceBatchGenerationPrompt(request)
+      : "本轮互动意图无需 provider 生成，使用本地兜底文案进入同一投递链路。",
+  };
+}
+
+function generationRecord(trace: WorkbenchMockPlanTrace): WorkbenchInsightRecord {
+  const detail = trace.generatedEvents
+    .slice(0, 3)
+    .map((event) => `${event.audienceName}：${event.content}`)
+    .join(" / ");
+  const usedProvider = trace.generationSource === "provider";
+  const providerFallback = Boolean(trace.generationRequest && !usedProvider);
+  const title =
+    usedProvider
+      ? "Provider 生成"
+      : providerFallback
+        ? "Provider 失败，本地兜底"
+        : "本地兜底生成";
+  const metaParts = [`${trace.frameLabel} · ${trace.generatedEvents.length} 条`];
+  if (trace.providerModel) metaParts.push(trace.providerModel);
+  if (typeof trace.providerLatencyMs === "number") metaParts.push(`${trace.providerLatencyMs}ms`);
+  return {
+    id: `${trace.id}-generation`,
+    title,
+    detail:
+      detail ||
+      trace.generationError?.message ||
+      "本轮没有生成可投递互动。",
+    happenedAt: formatQueueTime(trace.happenedAt),
+    statusLabel: usedProvider
+      ? "Provider"
+      : providerFallback
+        ? "已兜底"
+        : trace.generatedEvents.length > 0
+          ? "本地"
+          : "无输出",
+    tone: usedProvider
+      ? "ok"
+      : providerFallback
+        ? "warn"
+        : trace.generatedEvents.length > 0
+          ? "info"
+          : "warn",
+    meta: metaParts.join(" · "),
+    evidence: trace.generationError ? [trace.generationError.message] : undefined,
+  };
+}
+
+function memoryRecordsFor(
+  trace: WorkbenchMockPlanTrace,
+  memory: MemoryStoreSnapshot | null,
+  writeOutcomes: WorkbenchMemoryWriteOutcome[],
+): WorkbenchInsightRecord[] {
+  const retrieval: WorkbenchInsightRecord = {
+    id: `${trace.id}-memory-retrieval`,
+    title: "记忆检索快照",
+    detail: memory
+      ? `${memory.hostProfile.streamerName} · ${memory.audienceProfiles.length} 个观众画像 · ${memory.sessionRecaps.length} 条场次摘要`
+      : "记忆快照尚未加载，planner 本轮只使用影子观众池。",
+    happenedAt: formatQueueTime(trace.happenedAt),
+    statusLabel: memory ? "已读取" : "未就绪",
+    tone: memory ? "ok" : "warn",
+    meta: trace.frameLabel,
+    evidence: trace.contextWindow.events.slice(0, 2).map((event) => event.summary || event.content),
+  };
+
+  if (writeOutcomes.length === 0) {
+    return [
+      {
+        id: `${trace.id}-memory-write-empty`,
+        title: "记忆写回",
+        detail: "本轮没有投递成功的写回候选，不提交长期记忆污染风险。",
+        happenedAt: formatQueueTime(trace.happenedAt),
+        statusLabel: "无提交",
+        tone: "info",
+        meta: trace.frameLabel,
+      },
+      retrieval,
+    ];
+  }
+
+  return [
+    ...writeOutcomes.map((outcome, index) => memoryWriteRecordFor(trace, outcome, index)),
+    retrieval,
+  ];
+}
+
+function memoryWriteRecordFor(
+  trace: WorkbenchMockPlanTrace,
+  outcome: WorkbenchMemoryWriteOutcome,
+  index: number,
+): WorkbenchInsightRecord {
+  if ("error" in outcome) {
+    return {
+      id: `${trace.id}-memory-write-${index}`,
+      title: "记忆写回",
+      detail: outcome.candidate.summary,
+      happenedAt: formatQueueTime(trace.happenedAt),
+      statusLabel: "提交失败",
+      tone: "error",
+      meta: `${trace.frameLabel} · ${outcome.candidate.source}`,
+      evidence: [...(outcome.candidate.evidence ?? []), outcome.error],
+    };
+  }
+
+  const status = MEMORY_WRITE_STATUS_META[outcome.result.status];
+  return {
+    id: `${trace.id}-memory-write-${index}`,
+    title: "记忆写回",
+    detail: outcome.result.record.summary,
+    happenedAt: formatQueueTime(trace.happenedAt),
+    statusLabel: status.label,
+    tone: status.tone,
+    meta: `${trace.frameLabel} · ${outcome.result.record.layer}`,
+    evidence: [
+      outcome.result.record.reason,
+      ...(outcome.result.record.riskFlags ?? []),
+      ...(outcome.candidate.evidence ?? []),
+    ],
+  };
+}
+
+function pushLimited<T>(records: T[], next: T | T[], limit: number) {
+  return [...(Array.isArray(next) ? next : [next]), ...records].slice(0, limit);
+}
+
+function summarizeContext(window: ContextWindowSnapshot) {
+  const summaries = window.events.slice(0, 3).map((event) => event.summary || event.content);
+  return summaries.length ? summaries.join(" / ") : "暂无主播语音，保持低频暖场。";
 }
 
 async function refreshContextWindow() {
@@ -500,6 +837,31 @@ async function submitVoiceContext(content: string): Promise<boolean> {
   }
 }
 
+async function submitEchoLiveContext(payload: EchoLiveTextPayload): Promise<void> {
+  contextLoading.value = true;
+  contextError.value = null;
+  try {
+    contextWindow.value = await submitContextEvent({
+      source: "echo_live",
+      content: payload.content,
+      summary: payload.summary,
+    });
+  } catch (error) {
+    contextError.value = `提交 Echo-Live 文本失败：${toErrorMessage(error)}`;
+    throw error;
+  } finally {
+    contextLoading.value = false;
+  }
+}
+
+function connectEchoLive() {
+  echoLiveClient.connect();
+}
+
+function disconnectEchoLive() {
+  echoLiveClient.disconnect();
+}
+
 async function clearWorkbenchContextWindow(): Promise<boolean> {
   contextLoading.value = true;
   contextError.value = null;
@@ -521,14 +883,18 @@ export function useWorkbenchStore() {
     quotaView,
     audienceView,
     reviewView,
+    runtimeInsight,
     contextLoading,
     contextError,
     memorySnapshot,
     memoryLoading,
     memoryError,
+    echoLiveStatus,
     refreshContextWindow,
     refreshMemorySnapshot,
     submitVoiceContext,
+    connectEchoLive,
+    disconnectEchoLive,
     clearWorkbenchContextWindow,
     toggleRuntime,
   };

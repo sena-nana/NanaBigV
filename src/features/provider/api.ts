@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   ProviderConfig,
+  ProviderJsonGenerationResult,
   ProviderModelListResult,
   ProviderProbeResult,
 } from "./types";
@@ -23,4 +24,10 @@ export async function listProviderModels(
   config: ProviderConfig,
 ): Promise<ProviderModelListResult> {
   return invoke<ProviderModelListResult>("list_provider_models", { config });
+}
+
+export async function generateProviderJson(
+  prompt: string,
+): Promise<ProviderJsonGenerationResult> {
+  return invoke<ProviderJsonGenerationResult>("generate_provider_json", { prompt });
 }
