@@ -214,6 +214,42 @@ impl ProviderModelListResult {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderJsonGenerationResult {
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<ProviderError>,
+}
+
+impl ProviderJsonGenerationResult {
+    fn success(content: String, latency_ms: u64, model: String) -> Self {
+        Self {
+            ok: true,
+            content: Some(content),
+            latency_ms: Some(latency_ms),
+            model: Some(model),
+            error: None,
+        }
+    }
+
+    fn failure(error: ProviderError) -> Self {
+        Self {
+            ok: false,
+            content: None,
+            latency_ms: None,
+            model: None,
+            error: Some(error),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ProviderMessage {
     role: String,
@@ -260,6 +296,23 @@ impl ProviderClient {
                 ProviderMessage {
                     role: "user".to_string(),
                     content: "Return exactly this JSON object: {\"status\":\"ok\"}".to_string(),
+                },
+            ],
+            response_format: ProviderResponseFormat::JsonObject,
+        }
+    }
+
+    fn build_json_generation_request(&self, prompt: String) -> ProviderRequest {
+        ProviderRequest {
+            messages: vec![
+                ProviderMessage {
+                    role: "system".to_string(),
+                    content: "你是 BigV 的本地单直播间互动生成层。只返回符合用户约束的 JSON，不要输出解释。"
+                        .to_string(),
+                },
+                ProviderMessage {
+                    role: "user".to_string(),
+                    content: prompt,
                 },
             ],
             response_format: ProviderResponseFormat::JsonObject,
@@ -347,6 +400,33 @@ impl ProviderClient {
         }
     }
 
+    async fn generate_json(&self, prompt: String) -> ProviderJsonGenerationResult {
+        if prompt.trim().is_empty() {
+            return ProviderJsonGenerationResult::failure(ProviderError::invalid_config(
+                "生成提示词不能为空",
+                None,
+            ));
+        }
+
+        let request = self.build_json_generation_request(prompt);
+        let (response_body, latency_ms) = match self.execute(&request).await {
+            Ok(result) => result,
+            Err(error) => return ProviderJsonGenerationResult::failure(error),
+        };
+
+        let content = match extract_chat_content(&response_body) {
+            Ok(content) => content,
+            Err(error) => return ProviderJsonGenerationResult::failure(error),
+        };
+        let model = response_body
+            .get("model")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| self.config.model.clone());
+
+        ProviderJsonGenerationResult::success(content.to_string(), latency_ms, model)
+    }
+
     async fn fetch_models(&self) -> Result<Value, ProviderError> {
         let response = self
             .http
@@ -410,6 +490,14 @@ fn save_provider_config_to_store(
     Ok(normalized)
 }
 
+fn load_provider_client_from_store(app: &AppHandle) -> Result<ProviderClient, ProviderError> {
+    let config = load_provider_config_from_store(app).map_err(|error| {
+        ProviderError::invalid_config(format!("读取 Provider 配置失败：{error}"), None)
+    })?;
+
+    ProviderClient::new(config)
+}
+
 fn parse_models_response(response_body: &Value) -> Result<Vec<String>, ProviderError> {
     let data = response_body
         .get("data")
@@ -444,19 +532,7 @@ fn parse_models_response(response_body: &Value) -> Result<Vec<String>, ProviderE
 }
 
 fn validate_probe_response(response_body: &Value) -> Result<(), ProviderError> {
-    let content = response_body
-        .get("choices")
-        .and_then(Value::as_array)
-        .and_then(|choices| choices.first())
-        .and_then(|choice| choice.get("message"))
-        .and_then(|message| message.get("content"))
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            ProviderError::invalid_response(
-                "provider 响应缺少 choices[0].message.content",
-                snippet(&response_body.to_string()),
-            )
-        })?;
+    let content = extract_chat_content(response_body)?;
 
     let payload = serde_json::from_str::<Value>(content).map_err(|error| {
         ProviderError::invalid_response(
@@ -480,6 +556,22 @@ fn validate_probe_response(response_body: &Value) -> Result<(), ProviderError> {
     }
 
     Ok(())
+}
+
+fn extract_chat_content(response_body: &Value) -> Result<&str, ProviderError> {
+    response_body
+        .get("choices")
+        .and_then(Value::as_array)
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.get("message"))
+        .and_then(|message| message.get("content"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            ProviderError::invalid_response(
+                "provider 响应缺少 choices[0].message.content",
+                snippet(&response_body.to_string()),
+            )
+        })
 }
 
 fn map_transport_error(is_timeout: bool, message: String) -> ProviderError {
@@ -515,17 +607,7 @@ pub fn save_provider_config(
 
 #[tauri::command]
 pub async fn test_provider_connection(app: AppHandle) -> ProviderProbeResult {
-    let config = match load_provider_config_from_store(&app) {
-        Ok(config) => config,
-        Err(error) => {
-            return ProviderProbeResult::failure(ProviderError::invalid_config(
-                format!("读取 Provider 配置失败：{error}"),
-                None,
-            ));
-        }
-    };
-
-    let client = match ProviderClient::new(config) {
+    let client = match load_provider_client_from_store(&app) {
         Ok(client) => client,
         Err(error) => return ProviderProbeResult::failure(error),
     };
@@ -541,6 +623,19 @@ pub async fn list_provider_models(config: ProviderConfig) -> ProviderModelListRe
     };
 
     client.list_models().await
+}
+
+#[tauri::command]
+pub async fn generate_provider_json(
+    app: AppHandle,
+    prompt: String,
+) -> ProviderJsonGenerationResult {
+    let client = match load_provider_client_from_store(&app) {
+        Ok(client) => client,
+        Err(error) => return ProviderJsonGenerationResult::failure(error),
+    };
+
+    client.generate_json(prompt).await
 }
 
 #[cfg(test)]
@@ -608,6 +703,19 @@ mod tests {
         assert!(body.get("temperature").is_none());
         assert!(body.get("top_p").is_none());
         assert_eq!(body["response_format"]["type"], json!("json_object"));
+    }
+
+    #[test]
+    fn json_generation_request_uses_json_mode_and_user_prompt() {
+        let client = ProviderClient::new(sample_config()).unwrap();
+        let body = client.build_request_body(
+            &client.build_json_generation_request("{\"items\":[]}".to_string()),
+        );
+
+        assert_eq!(body["model"], json!("gpt-4.1-mini"));
+        assert_eq!(body["response_format"]["type"], json!("json_object"));
+        assert_eq!(body["messages"][1]["role"], json!("user"));
+        assert_eq!(body["messages"][1]["content"], json!("{\"items\":[]}"));
     }
 
     #[test]
@@ -681,5 +789,20 @@ mod tests {
 
         assert_eq!(error.kind, ProviderErrorKind::InvalidResponse);
         assert!(error.message.contains("choices[0].message.content"));
+    }
+
+    #[test]
+    fn extract_chat_content_reads_openai_compatible_message() {
+        let response = json!({
+            "choices": [
+                {
+                    "message": {
+                        "content": "{\"items\":[]}"
+                    }
+                }
+            ]
+        });
+
+        assert_eq!(extract_chat_content(&response).unwrap(), "{\"items\":[]}");
     }
 }

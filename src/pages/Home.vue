@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { Send, Trash2 } from "@lucide/vue";
+import { computed, defineAsyncComponent, onMounted, ref } from "vue";
+import { Activity, Send, Trash2 } from "@lucide/vue";
 import BlivechatOutputChannels from "../components/workbench/BlivechatOutputChannels.vue";
 import StatusBadge from "../components/workbench/StatusBadge.vue";
 import ToggleSwitch from "../components/ToggleSwitch.vue";
@@ -14,18 +14,28 @@ import "../styles/workbench.css";
 const {
   danmakuView: view,
   reviewView,
+  runtimeInsight,
   contextLoading,
   contextError,
+  echoLiveStatus,
   refreshContextWindow,
   submitVoiceContext,
+  connectEchoLive,
+  disconnectEchoLive,
   clearWorkbenchContextWindow,
   toggleRuntime,
 } = useWorkbenchStore();
 useProviderSettings();
 
+const WorkbenchRuntimeInsights = defineAsyncComponent(
+  () => import("../components/workbench/WorkbenchRuntimeInsights.vue"),
+);
 const voiceDraft = ref("");
+const runtimeInsightsOpen = ref(false);
 const homeSuggestions = computed(() => reviewView.value.suggestions.slice(0, 3));
 const canSubmitVoice = computed(() => voiceDraft.value.trim().length > 0 && !contextLoading.value);
+const echoLiveConnected = computed(() => echoLiveStatus.value.state === "connected");
+const echoLiveBusy = computed(() => echoLiveStatus.value.state === "connecting");
 const SIMULATION_METRIC_FIELDS: Array<{
   label: string;
   key: keyof Pick<
@@ -105,6 +115,14 @@ async function submitVoiceDraft() {
   const content = voiceDraft.value.trim();
   if (!content) return;
   if (await submitVoiceContext(content)) voiceDraft.value = "";
+}
+
+function toggleEchoLiveConnection() {
+  if (echoLiveConnected.value || echoLiveBusy.value) {
+    disconnectEchoLive();
+    return;
+  }
+  connectEchoLive();
 }
 
 async function clearContextEvents() {
@@ -230,13 +248,33 @@ async function clearContextEvents() {
               </div>
               <p v-if="contextError" class="home-context-error" role="alert">{{ contextError }}</p>
             </form>
+
+            <div class="home-echo-live-connector" aria-label="Echo-Live WebSocket 连接">
+              <div class="home-echo-live-connector__meta">
+                <strong>Echo-Live</strong>
+                <span>{{ echoLiveStatus.url }}</span>
+                <span v-if="echoLiveStatus.lastMessageAt">最近 {{ formatTimestamp(echoLiveStatus.lastMessageAt) }}</span>
+              </div>
+              <div class="home-echo-live-connector__actions">
+                <StatusBadge :label="echoLiveStatus.statusLabel" :tone="echoLiveStatus.tone" />
+                <button
+                  class="button-secondary home-action-button"
+                  type="button"
+                  :disabled="contextLoading && !echoLiveBusy"
+                  @click="toggleEchoLiveConnection"
+                >
+                  <Activity :size="15" aria-hidden="true" />
+                  <span>{{ echoLiveConnected || echoLiveBusy ? "断开" : "连接" }}</span>
+                </button>
+              </div>
+            </div>
           </section>
 
           <section class="home-context-panel home-context-panel--events" aria-labelledby="context-events-title">
             <div class="home-section-head">
               <div>
                 <h2 id="context-events-title">最近上下文事件</h2>
-                <p>主播语音优先，Echo-Live 和视觉仅预留挂接口</p>
+                <p>主播语音优先，Echo-Live 作为增强文本输入</p>
               </div>
             </div>
 
@@ -251,7 +289,7 @@ async function clearContextEvents() {
                 <p>{{ event.content }}</p>
               </article>
             </div>
-            <p v-else class="home-empty-state">等待主播语音文本输入。</p>
+            <p v-else class="home-empty-state">等待主播语音或 Echo-Live 文本输入。</p>
           </section>
 
           <section class="home-output-panel" aria-labelledby="output-events-title">
@@ -260,7 +298,18 @@ async function clearContextEvents() {
                 <h2 id="output-events-title">模拟互动输出</h2>
                 <p>本地 blivechat 队列记录 enqueue / deliver / throttle</p>
               </div>
-              <StatusBadge :label="mockSourceStateMeta.label" :tone="mockSourceStateMeta.tone" />
+              <div class="home-output-actions">
+                <button
+                  class="button-secondary home-action-button"
+                  type="button"
+                  :aria-pressed="runtimeInsightsOpen"
+                  @click="runtimeInsightsOpen = !runtimeInsightsOpen"
+                >
+                  <Activity :size="15" aria-hidden="true" />
+                  <span>{{ runtimeInsightsOpen ? "收起观测" : "观测详情" }}</span>
+                </button>
+                <StatusBadge :label="mockSourceStateMeta.label" :tone="mockSourceStateMeta.tone" />
+              </div>
             </div>
 
             <div class="home-mock-source">
@@ -300,6 +349,13 @@ async function clearContextEvents() {
                 <StatusBadge :label="record.statusLabel" :tone="record.tone" />
               </div>
             </div>
+
+            <Suspense v-if="runtimeInsightsOpen">
+              <WorkbenchRuntimeInsights :insight="runtimeInsight" />
+              <template #fallback>
+                <div class="home-runtime-loading">正在加载运行观测。</div>
+              </template>
+            </Suspense>
 
             <BlivechatOutputChannels :channels="view.blivechatChannels" />
           </section>
@@ -429,6 +485,56 @@ async function clearContextEvents() {
   flex-wrap: wrap;
 }
 
+.home-echo-live-connector {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+
+.home-echo-live-connector__meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.home-echo-live-connector__meta strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.home-echo-live-connector__meta span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.home-echo-live-connector__actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.home-output-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .home-action-button {
   display: inline-flex;
   align-items: center;
@@ -461,6 +567,15 @@ async function clearContextEvents() {
   color: var(--err);
   font-size: 12px;
   line-height: 1.45;
+}
+
+.home-runtime-loading {
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .home-context-panel--events {
@@ -743,6 +858,15 @@ async function clearContextEvents() {
 
   .home-mock-source {
     flex-direction: column;
+  }
+
+  .home-echo-live-connector {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .home-echo-live-connector__actions {
+    justify-content: space-between;
   }
 
   .home-simulation-status {

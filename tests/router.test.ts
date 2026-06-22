@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/vue";
 import { createMemoryHistory } from "vue-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App.vue";
 import { APP_METADATA } from "../src/config/appShell";
 import {
@@ -86,9 +86,9 @@ const emptyContextWindow = {
     {
       source: "echo_live",
       label: "Echo-Live",
-      statusLabel: "预留接口",
+      statusLabel: "未连接",
       tone: "info",
-      summary: "Echo-Live 输入适配器已预留，阶段 3 不接入真实事件。",
+      summary: "等待 Echo-Live WebSocket 文本输入。",
       eventCount: 0,
     },
     {
@@ -127,6 +127,36 @@ function voiceContextWindow(content: string) {
         eventCount: 1,
       },
       emptyContextWindow.sourceStatuses[1],
+      emptyContextWindow.sourceStatuses[2],
+    ],
+  };
+}
+
+function echoLiveContextWindow(content: string) {
+  return {
+    ...emptyContextWindow,
+    events: [
+      {
+        id: "ctx-echo-live-1",
+        source: "echo_live",
+        content,
+        summary: content,
+        occurredAt: 1_800_000_001_000,
+        receivedAt: 1_800_000_001_000,
+        status: "accepted",
+      },
+    ],
+    sourceStatuses: [
+      emptyContextWindow.sourceStatuses[0],
+      {
+        source: "echo_live",
+        label: "Echo-Live",
+        statusLabel: "在线",
+        tone: "ok",
+        summary: "最近 60 秒内收到 Echo-Live 文本，当前窗口有 1 条输入。",
+        lastEventAt: 1_800_000_001_000,
+        eventCount: 1,
+      },
       emptyContextWindow.sourceStatuses[2],
     ],
   };
@@ -173,8 +203,10 @@ function installInvokeMock(overrides: Partial<Record<string, unknown>> = {}) {
     if (command === "load_context_window") return emptyContextWindow;
     if (command === "load_memory_snapshot") return createMemorySnapshot();
     if (command === "submit_context_event") {
-      const event = payload?.event as { content?: string } | undefined;
-      return voiceContextWindow(event?.content ?? "");
+      const event = payload?.event as { content?: string; source?: string } | undefined;
+      return event?.source === "echo_live"
+        ? echoLiveContextWindow(event?.content ?? "")
+        : voiceContextWindow(event?.content ?? "");
     }
     if (command === "clear_context_window") return emptyContextWindow;
     throw new Error(`unexpected command: ${command}`);
@@ -203,6 +235,10 @@ beforeEach(() => {
   resetProviderSettingsStateForTest();
   mockInvoke.mockReset();
   installInvokeMock();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("基础路由", () => {
@@ -368,6 +404,46 @@ describe("基础路由", () => {
     expect(input).toHaveValue("");
   });
 
+  it("弹幕姬页可连接 Echo-Live 并提交收到的文本", async () => {
+    const sockets: MockWebSocket[] = [];
+    const MockWebSocketConstructor = function (this: unknown, url: string) {
+      const socket = new MockWebSocket(url);
+      sockets.push(socket);
+      return socket;
+    };
+    Reflect.set(MockWebSocketConstructor, "OPEN", 1);
+    vi.stubGlobal("WebSocket", MockWebSocketConstructor);
+    await renderAt("/danmaku");
+
+    await fireEvent.click(await screen.findByRole("button", { name: "连接" }));
+    expect(sockets[0]?.url).toBe("ws://127.0.0.1:3000");
+
+    sockets[0].open();
+    expect((await screen.findAllByText("已连接")).length).toBeGreaterThan(0);
+    expect(sockets[0].sent).toEqual([JSON.stringify({ action: "hello" })]);
+
+    sockets[0].message(
+      JSON.stringify({
+        action: "message_data",
+        data: {
+          username: "Echo",
+          messages: [{ message: "外部文本进入上下文" }],
+        },
+      }),
+    );
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith("submit_context_event", {
+        event: {
+          source: "echo_live",
+          content: "Echo：外部文本进入上下文",
+          summary: "Echo：外部文本进入上下文",
+        },
+      });
+    });
+    expect((await screen.findAllByText("Echo：外部文本进入上下文")).length).toBeGreaterThan(0);
+  });
+
   it("弹幕姬页可清空上下文窗口回到待输入状态", async () => {
     await renderAt("/danmaku");
 
@@ -383,7 +459,7 @@ describe("基础路由", () => {
     await waitFor(() => {
       expect(screen.queryByText("主播提到马上进 boss")).not.toBeInTheDocument();
     });
-    expect(screen.getAllByText("等待主播语音文本输入。").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("等待主播语音或 Echo-Live 文本输入。").length).toBeGreaterThan(0);
     expect(mockInvoke).toHaveBeenCalledWith("clear_context_window", undefined);
   });
 
@@ -401,7 +477,7 @@ describe("基础路由", () => {
       "提交主播语音失败：local ASR bridge unavailable",
     );
     expect(input).toHaveValue("这条不要丢");
-    expect(screen.getAllByText("等待主播语音文本输入。").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("等待主播语音或 Echo-Live 文本输入。").length).toBeGreaterThan(0);
   });
 
   it("额度检查页支持切换时间窗", async () => {
@@ -555,3 +631,31 @@ describe("基础路由", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "外观" })).toBeInTheDocument();
   });
 });
+
+class MockWebSocket {
+  readyState = 0;
+  sent: string[] = [];
+  onopen: ((event: Event) => void) | null = null;
+  onmessage: ((event: MessageEvent) => void) | null = null;
+  onerror: ((event: Event) => void) | null = null;
+  onclose: ((event: CloseEvent) => void) | null = null;
+
+  constructor(readonly url: string) {}
+
+  send(data: string) {
+    this.sent.push(data);
+  }
+
+  close() {
+    this.readyState = 3;
+  }
+
+  open() {
+    this.readyState = 1;
+    this.onopen?.(new Event("open"));
+  }
+
+  message(data: string) {
+    this.onmessage?.(new MessageEvent("message", { data }));
+  }
+}

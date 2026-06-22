@@ -49,9 +49,9 @@ export const BIGV_WORKBENCH_SNAPSHOT: BigVWorkbenchSnapshot = {
       {
         key: "echo-live",
         label: "Echo-Live",
-        statusLabel: "预留接口",
+        statusLabel: "未连接",
         tone: "info",
-        summary: "Echo-Live 输入适配器已预留，阶段 3 不接入真实事件。",
+        summary: "等待 Echo-Live WebSocket 文本输入。",
       },
       {
         key: "vision",

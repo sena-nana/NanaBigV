@@ -300,8 +300,9 @@ export function buildAudienceBatchGenerationPrompt(request: AudienceBatchGenerat
   return JSON.stringify({
     task: "为本地单直播间生成一批结构化观众互动，不逐观众扩写背景。",
     constraints: [
-      "只输出 JSON 数组",
-      "每项包含 audienceId、type、content，可选 amountLabel",
+      "只输出 JSON 对象",
+      "对象包含 items 数组",
+      "items 每项包含 audienceId、type、content，可选 amountLabel",
       "不得新增观众，不得输出未请求的互动类型",
     ],
     context: request.compressedContext,
@@ -328,14 +329,19 @@ export function parseAudienceBatchGenerationResult(
   } catch (error) {
     return { ok: false, error: `批量生成结果不是合法 JSON：${String(error)}` };
   }
-  if (!Array.isArray(parsed)) return { ok: false, error: "批量生成结果必须是 JSON 数组" };
-  if (parsed.length > request.maxOutputCount) {
+  const items = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === "object" && Array.isArray((parsed as { items?: unknown }).items)
+      ? (parsed as { items: unknown[] }).items
+      : null;
+  if (!items) return { ok: false, error: "批量生成结果必须包含 items 数组" };
+  if (items.length > request.maxOutputCount) {
     return { ok: false, error: "批量生成结果数量超过本轮意图上限" };
   }
 
   const intentByAudience = new Map(request.intents.map((intent) => [intent.audienceId, intent]));
   const events: BlivechatEventInput[] = [];
-  for (const item of parsed) {
+  for (const item of items) {
     if (!item || typeof item !== "object") {
       return { ok: false, error: "批量生成数组项必须是对象" };
     }
@@ -353,6 +359,7 @@ export function parseAudienceBatchGenerationResult(
     }
     events.push({
       type: intent.interactionType,
+      audienceId: intent.audienceId,
       audienceName: intent.audienceName,
       content: candidate.content.trim(),
       amountLabel: typeof candidate.amountLabel === "string" ? candidate.amountLabel : amountLabelFor(intent),
@@ -368,6 +375,7 @@ export function generateLocalAudienceEvents(
   const topic = latestContextText(contextWindow) || "当前直播节奏";
   return intents.map((intent) => ({
     type: intent.interactionType,
+    audienceId: intent.audienceId,
     audienceName: intent.audienceName,
     content: localContentForIntent(intent, topic),
     amountLabel: amountLabelFor(intent),

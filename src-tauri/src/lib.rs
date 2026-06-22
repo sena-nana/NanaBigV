@@ -54,7 +54,8 @@ pub fn run() {
             provider::load_provider_config,
             provider::save_provider_config,
             provider::test_provider_connection,
-            provider::list_provider_models
+            provider::list_provider_models,
+            provider::generate_provider_json
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

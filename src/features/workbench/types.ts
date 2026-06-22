@@ -97,6 +97,30 @@ export interface BlivechatRenderChannel {
   items: BlivechatRenderItem[];
 }
 
+export interface WorkbenchInsightRecord {
+  id: string;
+  happenedAt: string;
+  title: string;
+  detail: string;
+  statusLabel: string;
+  tone: StatusTone;
+  meta?: string;
+  evidence?: string[];
+  codePreview?: string;
+}
+
+export interface WorkbenchInsightSection {
+  id: string;
+  title: string;
+  emptyText: string;
+  records: WorkbenchInsightRecord[];
+}
+
+export interface WorkbenchRuntimeInsight {
+  updatedAt: string;
+  sections: WorkbenchInsightSection[];
+}
+
 export interface RuntimeNotice {
   id: string;
   title: string;

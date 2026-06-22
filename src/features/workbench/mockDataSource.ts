@@ -1,10 +1,18 @@
 import type { ContextEventInput, ContextSourceKind, ContextWindowSnapshot } from "../context/types";
-import type { MemoryStoreSnapshot } from "../memory/types";
+import type { MemoryStoreSnapshot, MemoryWriteInput } from "../memory/types";
+import type { ProviderError } from "../provider/types";
+import type { AudienceProviderBatchGenerationResult } from "./audienceGeneration";
 import {
   AudiencePlanner,
+  type AudienceBatchGenerationRequest,
   createInitialAudienceSimulationStatus,
 } from "./audiencePlanner";
-import type { BlivechatEventQueue } from "./eventRuntime";
+import type {
+  BlivechatEventInput,
+  BlivechatEventQueue,
+  BlivechatQueueRecord,
+} from "./eventRuntime";
+import { deliveredMemoryWriteCandidates } from "./memoryWriteback";
 import type {
   AudienceSimulationStatus,
   InteractionType,
@@ -36,7 +44,27 @@ interface WorkbenchMockDataSourceOptions {
   getMemorySnapshot?: () => MemoryStoreSnapshot | null;
   onChange: (status: MockSourceStatus, records: MockSourceRecord[]) => void;
   onSimulationStatusChange?: (status: AudienceSimulationStatus) => void;
+  onPlanTrace?: (trace: WorkbenchMockPlanTrace) => void;
+  generateAudienceBatch?: (
+    request: AudienceBatchGenerationRequest,
+  ) => Promise<AudienceProviderBatchGenerationResult>;
   now?: () => number;
+}
+
+export type WorkbenchGenerationSource = "provider" | "local_fallback";
+
+export interface WorkbenchMockPlanTrace {
+  id: string;
+  frameLabel: string;
+  happenedAt: number;
+  contextWindow: ContextWindowSnapshot;
+  generationRequest: AudienceBatchGenerationRequest | null;
+  generationSource: WorkbenchGenerationSource;
+  generationError?: ProviderError;
+  providerLatencyMs?: number;
+  providerModel?: string;
+  generatedEvents: BlivechatEventInput[];
+  memoryWriteCandidates: MemoryWriteInput[];
 }
 
 const SOURCE_LABELS: Record<ContextSourceKind, string> = {
@@ -190,20 +218,39 @@ export class WorkbenchMockDataSource {
         now: this.now(),
       });
       this.simulationStatus = plan.status;
+      const generation = await this.generateEvents(plan.generationRequest, plan.events);
 
       const interactionLabels: string[] = [];
-      for (const [index, event] of plan.events.entries()) {
+      const deliveredRecords: BlivechatQueueRecord[] = [];
+      for (const [index, event] of generation.events.entries()) {
         const happenedAt = this.now() + index * 150;
         this.options.queue.enqueue(event, happenedAt);
-        this.options.queue.deliverNext(
+        const deliveryRecord = this.options.queue.deliverNext(
           (queuedEvent) => this.options.canDeliverInteraction(queuedEvent.type),
           happenedAt + 500,
         );
+        if (deliveryRecord?.action === "deliver") deliveredRecords.push(deliveryRecord);
         interactionLabels.push(INTERACTION_LABELS[event.type]);
       }
+      this.options.onPlanTrace?.({
+        id: `mock-plan-${this.status.tickCount + 1}-${frame.id}`,
+        frameLabel: frame.label,
+        happenedAt: this.now(),
+        contextWindow: contextSnapshot,
+        generationRequest: plan.generationRequest,
+        generationSource: generation.source,
+        generationError: generation.error,
+        providerLatencyMs: generation.latencyMs,
+        providerModel: generation.model,
+        generatedEvents: generation.events,
+        memoryWriteCandidates: deliveredMemoryWriteCandidates(
+          plan.memoryWriteCandidates,
+          deliveredRecords,
+        ),
+      });
 
       const contextLabels = frame.contextEvents.map((event) =>
-        event.source === "voice"
+        event.source !== "vision"
           ? SOURCE_LABELS[event.source]
           : `${SOURCE_LABELS[event.source]} 预留未写入窗口`,
       );
@@ -228,6 +275,42 @@ export class WorkbenchMockDataSource {
       this.contextInFlight = false;
       this.notify();
     }
+  }
+
+  private async generateEvents(
+    request: AudienceBatchGenerationRequest | null,
+    fallbackEvents: BlivechatEventInput[],
+  ): Promise<{
+    source: WorkbenchGenerationSource;
+    events: BlivechatEventInput[];
+    error?: ProviderError;
+    latencyMs?: number;
+    model?: string;
+  }> {
+    if (!request) {
+      return { source: "local_fallback", events: fallbackEvents };
+    }
+
+    const generateAudienceBatch = this.options.generateAudienceBatch;
+    if (!generateAudienceBatch) {
+      return { source: "local_fallback", events: fallbackEvents };
+    }
+
+    const result = await generateAudienceBatch(request);
+    if (!result.ok) {
+      return {
+        source: "local_fallback",
+        events: fallbackEvents,
+        error: result.error,
+      };
+    }
+
+    return {
+      source: "provider",
+      events: result.events,
+      latencyMs: result.latencyMs,
+      model: result.model,
+    };
   }
 
   private pushRecord(
