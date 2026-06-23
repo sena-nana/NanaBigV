@@ -75,6 +75,74 @@ describe("Echo-Live WebSocket client", () => {
     });
     expect(status).toMatchObject({ state: "connected", lastMessageAt: 10_000 });
   });
+
+  it("reports discarded messages and submit failures as diagnostics", async () => {
+    const socket = new MockSocket();
+    const statuses: EchoLiveConnectionStatus[] = [];
+    const client = new EchoLiveWebSocketClient({
+      submitText: async () => {
+        throw new Error("context bridge unavailable");
+      },
+      onStatusChange: (next) => {
+        statuses.push(next);
+      },
+      now: () => 20_000,
+      webSocketFactory: () => socket,
+    });
+
+    client.connect();
+    socket.open();
+
+    socket.message("not-json");
+    expect(statuses.at(-1)).toMatchObject({
+      diagnostics: {
+        discardedCount: 1,
+        lastDiscard: {
+          kind: "invalid_json",
+          reason: "收到无法解析的 JSON 消息",
+          rawPreview: "not-json",
+        },
+      },
+    });
+
+    socket.message(JSON.stringify({ action: "room_update" }));
+    expect(statuses.at(-1)).toMatchObject({
+      diagnostics: {
+        discardedCount: 2,
+        lastDiscard: {
+          kind: "non_message_data",
+          reason: "非 message_data 消息：room_update",
+        },
+      },
+    });
+
+    socket.message(JSON.stringify({ action: "message_data", data: { messages: [] } }));
+    expect(statuses.at(-1)).toMatchObject({
+      diagnostics: {
+        discardedCount: 3,
+        lastDiscard: {
+          kind: "empty_message_data",
+          reason: "message_data 缺少可提交文本",
+        },
+      },
+    });
+
+    socket.message(JSON.stringify({ action: "message_data", data: { messages: [{ message: "提交会失败" }] } }));
+    await vi.waitFor(() => {
+      expect(statuses.at(-1)).toMatchObject({
+        state: "error",
+        error: "提交 Echo-Live 文本失败：context bridge unavailable",
+        diagnostics: {
+          discardedCount: 3,
+          submitFailureCount: 1,
+          lastSubmitFailure: {
+            kind: "submit_failed",
+            reason: "提交 Echo-Live 文本失败：context bridge unavailable",
+          },
+        },
+      });
+    });
+  });
 });
 
 class MockSocket {

@@ -11,6 +11,7 @@ import {
   EchoLiveWebSocketClient,
   createInitialEchoLiveConnectionStatus,
   type EchoLiveConnectionStatus,
+  type EchoLiveDiagnosticEvent,
   type EchoLiveTextPayload,
 } from "../context/echoLiveClient";
 import { loadMemorySnapshot, submitMemoryWrite } from "../memory/api";
@@ -315,20 +316,21 @@ function mergeEchoLiveSourceStatus(
 ): InputSourceStatus {
   const connection = echoLiveStatus.value;
   const base = contextSourceStatus(source);
+  const diagnosticSummary = formatEchoLiveDiagnosticSummary(connection);
   if (connection.state === "connecting") {
     return {
       ...base,
       statusLabel: connection.statusLabel,
       tone: connection.tone,
-      summary: `正在连接 ${connection.url}`,
+      summary: joinSummary(`正在连接 ${connection.url}`, diagnosticSummary),
     };
   }
   if (connection.state === "connected" && source.eventCount === 0) {
     return {
       ...base,
       statusLabel: connection.statusLabel,
-      tone: connection.tone,
-      summary: "Echo-Live WebSocket 已连接，等待文本广播。",
+      tone: diagnosticSummary ? "warn" : connection.tone,
+      summary: joinSummary("Echo-Live WebSocket 已连接，等待文本广播。", diagnosticSummary),
       lastEventAt: connection.lastMessageAt,
     };
   }
@@ -337,13 +339,31 @@ function mergeEchoLiveSourceStatus(
       ...base,
       statusLabel: connection.statusLabel,
       tone: connection.tone,
-      summary: connection.error ?? "Echo-Live WebSocket 连接异常。",
+      summary: joinSummary(connection.error ?? "Echo-Live WebSocket 连接异常。", diagnosticSummary),
     };
   }
   return {
     ...base,
     lastEventAt: base.lastEventAt ?? connection.lastMessageAt,
+    summary: joinSummary(base.summary, diagnosticSummary),
+    tone: diagnosticSummary ? "warn" : base.tone,
   };
+}
+
+function formatEchoLiveDiagnosticSummary(connection: EchoLiveConnectionStatus): string | null {
+  const { diagnostics } = connection;
+  const parts: string[] = [];
+  if (diagnostics.lastDiscard) {
+    parts.push(`最近丢弃：${diagnostics.lastDiscard.reason}，累计 ${diagnostics.discardedCount} 次`);
+  }
+  if (diagnostics.lastSubmitFailure) {
+    parts.push(`提交失败：${diagnostics.lastSubmitFailure.reason}，累计 ${diagnostics.submitFailureCount} 次`);
+  }
+  return parts.length ? parts.join("；") : null;
+}
+
+function joinSummary(summary: string, diagnosticSummary: string | null) {
+  return diagnosticSummary ? `${summary} ${diagnosticSummary}` : summary;
 }
 
 function contextSourceStatus(
@@ -427,14 +447,17 @@ function createRuntimeInsight(): WorkbenchRuntimeInsight {
         id: "inputs",
         title: "最近输入",
         emptyText: "暂无主播语音输入。",
-        records: contextWindow.value.events.slice(0, 5).map((event) => ({
-          id: event.id,
-          title: event.summary,
-          detail: event.content,
-          happenedAt: formatQueueTime(event.receivedAt),
-          statusLabel: event.source,
-          tone: "info" as const,
-        })),
+        records: [
+          ...echoLiveDiagnosticRecords(),
+          ...contextWindow.value.events.slice(0, 5).map((event) => ({
+            id: event.id,
+            title: event.summary,
+            detail: event.content,
+            happenedAt: formatQueueTime(event.receivedAt),
+            statusLabel: event.source,
+            tone: "info" as const,
+          })),
+        ],
       },
       {
         id: "prompts",
@@ -472,6 +495,49 @@ function createRuntimeInsight(): WorkbenchRuntimeInsight {
         records: memoryRecords.value,
       },
     ],
+  };
+}
+
+function echoLiveDiagnosticRecords(): WorkbenchInsightRecord[] {
+  const { diagnostics } = echoLiveStatus.value;
+  const records: WorkbenchInsightRecord[] = [];
+  if (diagnostics.lastSubmitFailure) {
+    records.push(echoLiveDiagnosticRecord(
+      "echo-live-submit-failure",
+      "Echo-Live 提交失败",
+      diagnostics.lastSubmitFailure,
+      `失败 ${diagnostics.submitFailureCount}`,
+      "error",
+    ));
+  }
+  if (diagnostics.lastDiscard) {
+    records.push(echoLiveDiagnosticRecord(
+      "echo-live-discard",
+      "Echo-Live 丢弃消息",
+      diagnostics.lastDiscard,
+      `丢弃 ${diagnostics.discardedCount}`,
+      "warn",
+    ));
+  }
+  return records;
+}
+
+function echoLiveDiagnosticRecord(
+  id: string,
+  title: string,
+  event: EchoLiveDiagnosticEvent,
+  statusLabel: string,
+  tone: WorkbenchInsightRecord["tone"],
+): WorkbenchInsightRecord {
+  return {
+    id,
+    title,
+    detail: event.reason,
+    happenedAt: formatQueueTime(event.happenedAt),
+    statusLabel,
+    tone,
+    meta: "Echo-Live",
+    codePreview: event.rawPreview,
   };
 }
 

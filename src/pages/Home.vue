@@ -36,6 +36,17 @@ const homeSuggestions = computed(() => reviewView.value.suggestions.slice(0, 3))
 const canSubmitVoice = computed(() => voiceDraft.value.trim().length > 0 && !contextLoading.value);
 const echoLiveConnected = computed(() => echoLiveStatus.value.state === "connected");
 const echoLiveBusy = computed(() => echoLiveStatus.value.state === "connecting");
+const echoLiveDiagnosticLines = computed(() => {
+  const { diagnostics } = echoLiveStatus.value;
+  const lines: string[] = [];
+  if (diagnostics.lastDiscard) {
+    lines.push(`最近丢弃：${diagnostics.lastDiscard.reason} · 共 ${diagnostics.discardedCount} 次`);
+  }
+  if (diagnostics.lastSubmitFailure) {
+    lines.push(`提交失败：${diagnostics.lastSubmitFailure.reason} · 共 ${diagnostics.submitFailureCount} 次`);
+  }
+  return lines;
+});
 const SIMULATION_METRIC_FIELDS: Array<{
   label: string;
   key: keyof Pick<
@@ -254,6 +265,13 @@ async function clearContextEvents() {
                 <strong>Echo-Live</strong>
                 <span>{{ echoLiveStatus.url }}</span>
                 <span v-if="echoLiveStatus.lastMessageAt">最近 {{ formatTimestamp(echoLiveStatus.lastMessageAt) }}</span>
+                <span
+                  v-for="line in echoLiveDiagnosticLines"
+                  :key="line"
+                  class="home-echo-live-diagnostic"
+                >
+                  {{ line }}
+                </span>
               </div>
               <div class="home-echo-live-connector__actions">
                 <StatusBadge :label="echoLiveStatus.statusLabel" :tone="echoLiveStatus.tone" />
@@ -517,6 +535,13 @@ async function clearContextEvents() {
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.45;
+}
+
+.home-echo-live-connector__meta .home-echo-live-diagnostic {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  color: var(--warn);
 }
 
 .home-echo-live-connector__actions {
