@@ -422,6 +422,17 @@ describe("基础路由", () => {
     expect((await screen.findAllByText("已连接")).length).toBeGreaterThan(0);
     expect(sockets[0].sent).toEqual([JSON.stringify({ action: "hello" })]);
 
+    sockets[0].message("not-json");
+    expect(await screen.findAllByText(/收到无法解析的 JSON 消息/)).not.toHaveLength(0);
+
+    sockets[0].message(JSON.stringify({ action: "room_update" }));
+    expect(await screen.findAllByText(/非 message_data 消息：room_update/)).not.toHaveLength(0);
+    expect(screen.getAllByText(/共 2 次|累计 2 次/).length).toBeGreaterThan(0);
+
+    await fireEvent.click(screen.getByRole("button", { name: "观测详情" }));
+    expect(await screen.findByText("Echo-Live 丢弃消息")).toBeInTheDocument();
+    expect(screen.getByText("丢弃 2")).toBeInTheDocument();
+
     sockets[0].message(
       JSON.stringify({
         action: "message_data",
@@ -442,6 +453,46 @@ describe("基础路由", () => {
       });
     });
     expect((await screen.findAllByText("Echo：外部文本进入上下文")).length).toBeGreaterThan(0);
+  });
+
+  it("弹幕姬页展示 Echo-Live 提交失败诊断", async () => {
+    installInvokeMock({
+      submit_context_event: new Error("context submit failed"),
+    });
+    const sockets: MockWebSocket[] = [];
+    const MockWebSocketConstructor = function (this: unknown, url: string) {
+      const socket = new MockWebSocket(url);
+      sockets.push(socket);
+      return socket;
+    };
+    Reflect.set(MockWebSocketConstructor, "OPEN", 1);
+    vi.stubGlobal("WebSocket", MockWebSocketConstructor);
+    await renderAt("/danmaku");
+
+    const initialConnectionButton = await screen.findByRole("button", { name: /连接|断开/ });
+    if (initialConnectionButton.textContent?.includes("断开")) {
+      await fireEvent.click(initialConnectionButton);
+    }
+    await fireEvent.click(await screen.findByRole("button", { name: "连接" }));
+    sockets[0].open();
+    sockets[0].message(
+      JSON.stringify({
+        action: "message_data",
+        data: {
+          username: "Echo",
+          messages: [{ message: "这条会提交失败" }],
+        },
+      }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "提交 Echo-Live 文本失败：context submit failed",
+    );
+    expect(await screen.findAllByText(/提交失败：提交 Echo-Live 文本失败：context submit failed/)).not.toHaveLength(0);
+
+    await fireEvent.click(screen.getByRole("button", { name: "观测详情" }));
+    expect(await screen.findByText("Echo-Live 提交失败")).toBeInTheDocument();
+    expect(screen.getAllByText(/失败 [1-9]/).length).toBeGreaterThan(0);
   });
 
   it("弹幕姬页可清空上下文窗口回到待输入状态", async () => {

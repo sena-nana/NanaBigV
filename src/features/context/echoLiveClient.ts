@@ -11,6 +11,26 @@ export interface EchoLiveConnectionStatus {
   tone: ContextStatusTone;
   lastMessageAt?: number;
   error?: string;
+  diagnostics: EchoLiveDiagnostics;
+}
+
+export type EchoLiveDiscardKind =
+  | "invalid_json"
+  | "non_message_data"
+  | "empty_message_data";
+
+export interface EchoLiveDiagnosticEvent {
+  kind: EchoLiveDiscardKind | "submit_failed";
+  reason: string;
+  happenedAt: number;
+  rawPreview?: string;
+}
+
+export interface EchoLiveDiagnostics {
+  discardedCount: number;
+  submitFailureCount: number;
+  lastDiscard?: EchoLiveDiagnosticEvent;
+  lastSubmitFailure?: EchoLiveDiagnosticEvent;
 }
 
 export interface EchoLiveTextPayload {
@@ -46,6 +66,7 @@ export function createInitialEchoLiveConnectionStatus(
     url,
     statusLabel: "未连接",
     tone: "info",
+    diagnostics: createInitialEchoLiveDiagnostics(),
   };
 }
 
@@ -88,26 +109,24 @@ export class EchoLiveWebSocketClient {
   connect() {
     if (this.socket && this.status.state !== "error") return;
     this.closeSocket();
-    this.status = {
+    this.setStatus({
       state: "connecting",
       url: this.url,
       statusLabel: "连接中",
       tone: "info",
-    };
-    this.notify();
+    });
 
     try {
       const socket = this.createSocket();
       this.socket = socket;
       socket.onopen = () => {
-        this.status = {
+        this.setStatus({
           state: "connected",
           url: this.url,
           statusLabel: "已连接",
           tone: "ok",
-        };
+        });
         this.sendHello();
-        this.notify();
       };
       socket.onmessage = (event) => {
         void this.handleMessage(event.data);
@@ -122,8 +141,12 @@ export class EchoLiveWebSocketClient {
           return;
         }
         this.socket = null;
-        this.status = createInitialEchoLiveConnectionStatus(this.url);
-        this.notify();
+        this.setStatus({
+          state: "idle",
+          url: this.url,
+          statusLabel: "未连接",
+          tone: "info",
+        });
       };
     } catch (error) {
       this.fail(`Echo-Live WebSocket 创建失败：${toErrorMessage(error)}`);
@@ -132,8 +155,12 @@ export class EchoLiveWebSocketClient {
 
   disconnect() {
     this.closeSocket();
-    this.status = createInitialEchoLiveConnectionStatus(this.url);
-    this.notify();
+    this.setStatus({
+      state: "idle",
+      url: this.url,
+      statusLabel: "未连接",
+      tone: "info",
+    });
   }
 
   getStatus() {
@@ -142,26 +169,44 @@ export class EchoLiveWebSocketClient {
 
   private async handleMessage(raw: unknown) {
     const envelope = parseJsonObject(raw);
-    if (envelope?.action === "ping") {
-      this.sendHello();
+    if (!envelope) {
+      this.recordDiscard("invalid_json", "收到无法解析的 JSON 消息", raw);
       return;
     }
 
-    const payload = envelope ? parseEchoLiveEnvelope(envelope) : null;
-    if (!payload) return;
+    if (envelope?.action === "ping") {
+      this.recordDiscard("non_message_data", "非 message_data 消息：ping（已回应 hello）", raw);
+      this.sendHello();
+      return;
+    }
+    if (envelope.action !== "message_data") {
+      this.recordDiscard(
+        "non_message_data",
+        `非 message_data 消息：${formatAction(envelope.action)}`,
+        raw,
+      );
+      return;
+    }
+
+    const payload = parseEchoLiveEnvelope(envelope);
+    if (!payload) {
+      this.recordDiscard("empty_message_data", "message_data 缺少可提交文本", raw);
+      return;
+    }
 
     try {
       await this.options.submitText(payload);
-      this.status = {
+      this.setStatus({
         state: "connected",
         url: this.url,
         statusLabel: "已连接",
         tone: "ok",
         lastMessageAt: this.now(),
-      };
-      this.notify();
+      });
     } catch (error) {
-      this.fail(`提交 Echo-Live 文本失败：${toErrorMessage(error)}`);
+      const message = `提交 Echo-Live 文本失败：${toErrorMessage(error)}`;
+      this.recordSubmitFailure(message, raw);
+      this.fail(message);
     }
   }
 
@@ -172,14 +217,13 @@ export class EchoLiveWebSocketClient {
 
   private fail(error: string) {
     this.closeSocket();
-    this.status = {
+    this.setStatus({
       state: "error",
       url: this.url,
       statusLabel: "异常",
       tone: "error",
       error,
-    };
-    this.notify();
+    });
   }
 
   private closeSocket() {
@@ -202,6 +246,47 @@ export class EchoLiveWebSocketClient {
     this.options.onStatusChange(this.getStatus());
   }
 
+  private recordDiscard(kind: EchoLiveDiscardKind, reason: string, raw: unknown) {
+    const diagnostics = this.status.diagnostics;
+    this.setDiagnostics({
+      ...diagnostics,
+      discardedCount: diagnostics.discardedCount + 1,
+      lastDiscard: {
+        kind,
+        reason,
+        happenedAt: this.now(),
+        rawPreview: previewRawMessage(raw),
+      },
+    });
+  }
+
+  private recordSubmitFailure(reason: string, raw: unknown) {
+    const diagnostics = this.status.diagnostics;
+    this.setDiagnostics({
+      ...diagnostics,
+      submitFailureCount: diagnostics.submitFailureCount + 1,
+      lastSubmitFailure: {
+        kind: "submit_failed",
+        reason,
+        happenedAt: this.now(),
+        rawPreview: previewRawMessage(raw),
+      },
+    });
+  }
+
+  private setDiagnostics(diagnostics: EchoLiveDiagnostics) {
+    this.status = { ...this.status, diagnostics };
+    this.notify();
+  }
+
+  private setStatus(status: Omit<EchoLiveConnectionStatus, "diagnostics">) {
+    this.status = {
+      ...status,
+      diagnostics: this.status.diagnostics,
+    };
+    this.notify();
+  }
+
   private now() {
     return this.options.now?.() ?? Date.now();
   }
@@ -219,6 +304,23 @@ function parseJsonObject(raw: unknown): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+function createInitialEchoLiveDiagnostics(): EchoLiveDiagnostics {
+  return {
+    discardedCount: 0,
+    submitFailureCount: 0,
+  };
+}
+
+function formatAction(action: unknown) {
+  if (typeof action === "string" && action.trim()) return action;
+  return "未知 action";
+}
+
+function previewRawMessage(raw: unknown) {
+  const value = typeof raw === "string" ? raw : String(raw);
+  return limitChars(value, 240);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
