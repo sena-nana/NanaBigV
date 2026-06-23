@@ -4,6 +4,8 @@ import type {
   AudienceViewModel,
   HostProfileSnapshot,
   InteractionType,
+  ReviewMemoryWriteRecord,
+  ReviewMemoryWriteSummary,
   ReviewViewModel,
 } from "../workbench/types";
 import type {
@@ -11,6 +13,7 @@ import type {
   MemoryLayer,
   MemoryRecord,
   MemoryStoreSnapshot,
+  MemoryWriteRecord,
 } from "./types";
 
 const MEMORY_LAYER_LABELS: Record<MemoryLayer, string> = {
@@ -19,6 +22,18 @@ const MEMORY_LAYER_LABELS: Record<MemoryLayer, string> = {
   audience_profile: "观众画像",
   session_recap: "场次摘要",
 };
+
+const EMPTY_WRITE_SUMMARY: ReviewMemoryWriteSummary = {
+  accepted: 0,
+  quarantined: 0,
+  rejected: 0,
+};
+
+const MEMORY_WRITE_STATUS_TONES = {
+  accepted: "ok",
+  quarantined: "warn",
+  rejected: "error",
+} satisfies Record<ReviewMemoryWriteRecord["status"], ReviewMemoryWriteRecord["tone"]>;
 
 const EMPTY_HOST_PROFILE: HostProfileSnapshot = {
   streamerName: "",
@@ -40,6 +55,8 @@ export const EMPTY_MEMORY_REVIEW_VIEW: ReviewViewModel = {
   sessionRecaps: [],
   highlights: [],
   suggestions: [],
+  writeRecords: [],
+  writeSummary: EMPTY_WRITE_SUMMARY,
 };
 
 export function deriveAudienceViewFromMemory(
@@ -60,11 +77,46 @@ export function deriveReviewViewFromMemory(
   snapshot: MemoryStoreSnapshot | null,
 ): ReviewViewModel {
   if (!snapshot) return EMPTY_MEMORY_REVIEW_VIEW;
+  const audienceNames = new Map(
+    snapshot.audienceProfiles.map((profile) => [profile.id, profile.name]),
+  );
+  const writeRecords = snapshot.writeRecords.map((record) =>
+    toReviewMemoryWriteRecord(record, audienceNames),
+  );
+  const writeSummary = { ...EMPTY_WRITE_SUMMARY };
+  for (const record of writeRecords) {
+    writeSummary[record.status] += 1;
+  }
+
   return {
     hostProfile: snapshot.hostProfile,
     sessionRecaps: snapshot.sessionRecaps,
     highlights: snapshot.highlights,
     suggestions: snapshot.suggestions,
+    writeRecords,
+    writeSummary,
+  };
+}
+
+function toReviewMemoryWriteRecord(
+  record: MemoryWriteRecord,
+  audienceNames: Map<string, string>,
+): ReviewMemoryWriteRecord {
+  const riskFlags = [...(record.riskFlags ?? [])];
+  if (record.conflictWith) riskFlags.push(`冲突：${record.conflictWith}`);
+
+  return {
+    id: record.id,
+    layerLabel: MEMORY_LAYER_LABELS[record.layer],
+    status: record.status,
+    tone: MEMORY_WRITE_STATUS_TONES[record.status],
+    summary: record.summary,
+    reason: record.reason,
+    updatedAt: record.updatedAt,
+    audienceName: record.audienceId
+      ? (audienceNames.get(record.audienceId) ?? record.audienceId)
+      : "未绑定观众",
+    riskFlags,
   };
 }
 

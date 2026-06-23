@@ -299,5 +299,11 @@ export const BIGV_WORKBENCH_SNAPSHOT: BigVWorkbenchSnapshot = {
     sessionRecaps: [],
     highlights: [],
     suggestions: [],
+    writeRecords: [],
+    writeSummary: {
+      accepted: 0,
+      quarantined: 0,
+      rejected: 0,
+    },
   },
 };

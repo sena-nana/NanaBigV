@@ -311,11 +311,28 @@ export interface StreamSuggestion {
   priority: string;
 }
 
+export type ReviewMemoryWriteStatus = "accepted" | "quarantined" | "rejected";
+export type ReviewMemoryWriteSummary = Record<ReviewMemoryWriteStatus, number>;
+
+export interface ReviewMemoryWriteRecord {
+  id: string;
+  layerLabel: string;
+  status: ReviewMemoryWriteStatus;
+  tone: StatusTone;
+  summary: string;
+  reason: string;
+  updatedAt: string;
+  audienceName: string;
+  riskFlags: string[];
+}
+
 export interface ReviewViewModel {
   hostProfile: HostProfileSnapshot;
   sessionRecaps: SessionRecap[];
   highlights: HighlightEvent[];
   suggestions: StreamSuggestion[];
+  writeRecords: ReviewMemoryWriteRecord[];
+  writeSummary: ReviewMemoryWriteSummary;
 }
 
 export interface BigVWorkbenchSnapshot {
