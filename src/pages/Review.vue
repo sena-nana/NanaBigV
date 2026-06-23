@@ -67,6 +67,56 @@ const { reviewView: view } = useWorkbenchStore();
             </article>
           </div>
         </div>
+
+        <div class="card">
+          <div class="workbench-card-head">
+            <h2>记忆写回结果</h2>
+            <span class="workbench-list-item__meta">最近 {{ view.writeRecords.length }} 条</span>
+          </div>
+          <div class="review-write-summary" aria-label="记忆写回状态统计">
+            <div class="review-write-summary__item">
+              <span>accepted</span>
+              <strong>{{ view.writeSummary.accepted }}</strong>
+            </div>
+            <div class="review-write-summary__item">
+              <span>quarantined</span>
+              <strong>{{ view.writeSummary.quarantined }}</strong>
+            </div>
+            <div class="review-write-summary__item">
+              <span>rejected</span>
+              <strong>{{ view.writeSummary.rejected }}</strong>
+            </div>
+          </div>
+          <div v-if="view.writeRecords.length > 0" class="workbench-list">
+            <article
+              v-for="record in view.writeRecords"
+              :key="record.id"
+              class="workbench-list-item"
+            >
+              <div class="workbench-list-item__row">
+                <span class="workbench-list-item__title">{{ record.summary }}</span>
+                <StatusBadge :label="record.status" :tone="record.tone" />
+              </div>
+              <div class="workbench-inline workbench-list-item__meta">
+                <span>{{ record.layerLabel }}</span>
+                <span>{{ record.updatedAt }}</span>
+                <span>{{ record.audienceName }}</span>
+              </div>
+              <p class="review-write-record__reason">{{ record.reason }}</p>
+              <div class="workbench-tag-list">
+                <span
+                  v-for="risk in record.riskFlags"
+                  :key="risk"
+                  class="workbench-tag"
+                >
+                  {{ risk }}
+                </span>
+                <span v-if="record.riskFlags.length === 0" class="workbench-tag">无风险标记</span>
+              </div>
+            </article>
+          </div>
+          <p v-else class="review-summary">暂无记忆写回记录。</p>
+        </div>
       </div>
 
       <div class="workbench-stack">
@@ -154,6 +204,42 @@ const { reviewView: view } = useWorkbenchStore();
   line-height: 1.6;
 }
 
+.review-write-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.review-write-summary__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle);
+}
+
+.review-write-summary__item span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.review-write-summary__item strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
+.review-write-record__reason {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 @media (max-width: 700px) {
   .timeline-item {
     grid-template-columns: 1fr;
@@ -162,6 +248,10 @@ const { reviewView: view } = useWorkbenchStore();
   .timeline-item__body {
     padding-left: 0;
     border-left: 0;
+  }
+
+  .review-write-summary {
+    grid-template-columns: 1fr;
   }
 }
 </style>

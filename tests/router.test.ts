@@ -595,6 +595,7 @@ describe("基础路由", () => {
             },
           ],
         },
+        baseMemorySnapshot.audienceProfiles[1],
       ],
       suggestions: [
         {
@@ -603,6 +604,38 @@ describe("基础路由", () => {
           title: "来自 MemoryStore 的建议",
           detail: "测试页面数据来源。",
           priority: "高优先级",
+        },
+      ],
+      writeRecords: [
+        {
+          id: "write-accepted",
+          layer: "audience_profile",
+          status: "accepted",
+          summary: "阿黎在调试段落会主动起梗。",
+          reason: "重复出现且与既有画像一致，写入观众画像。",
+          updatedAt: "刚刚",
+          audienceId: "memory-store-audience",
+          riskFlags: [],
+        },
+        {
+          id: "write-quarantined",
+          layer: "long_term_fact",
+          status: "quarantined",
+          summary: "北街舟可能不喜欢节奏拉扯。",
+          reason: "单场观察不足，进入隔离区等待后续验证。",
+          updatedAt: "2 分钟前",
+          audienceId: "bei-jie-zhou",
+          riskFlags: ["单场观察", "画像漂移"],
+        },
+        {
+          id: "write-rejected",
+          layer: "host_profile",
+          status: "rejected",
+          summary: "主播应该改成高压催促风格。",
+          reason: "与主播设定冲突，拒绝写入。",
+          updatedAt: "3 分钟前",
+          riskFlags: ["设定冲突"],
+          conflictWith: "host-memory-1",
         },
       ],
     });
@@ -617,6 +650,22 @@ describe("基础路由", () => {
 
     expect(await screen.findByText("主播：MemoryStore 测试")).toBeInTheDocument();
     expect(screen.getByText("来自 MemoryStore 的建议")).toBeInTheDocument();
+    const writeStats = screen.getByLabelText("记忆写回状态统计");
+    expect(writeStats).toHaveTextContent("accepted1");
+    expect(writeStats).toHaveTextContent("quarantined1");
+    expect(writeStats).toHaveTextContent("rejected1");
+    expect(screen.getByText("阿黎在调试段落会主动起梗。")).toBeInTheDocument();
+    expect(screen.getAllByText("accepted").length).toBeGreaterThan(0);
+    expect(screen.getByText("重复出现且与既有画像一致，写入观众画像。")).toBeInTheDocument();
+    expect(screen.getByText("记忆层观众")).toBeInTheDocument();
+    expect(screen.getAllByText("quarantined").length).toBeGreaterThan(0);
+    expect(screen.getByText("单场观察不足，进入隔离区等待后续验证。")).toBeInTheDocument();
+    expect(screen.getByText("北街舟")).toBeInTheDocument();
+    expect(screen.getByText("画像漂移")).toBeInTheDocument();
+    expect(screen.getAllByText("rejected").length).toBeGreaterThan(0);
+    expect(screen.getByText("与主播设定冲突，拒绝写入。")).toBeInTheDocument();
+    expect(screen.getByText("未绑定观众")).toBeInTheDocument();
+    expect(screen.getByText("冲突：host-memory-1")).toBeInTheDocument();
   });
 
   it("未知路由回到弹幕姬", async () => {
