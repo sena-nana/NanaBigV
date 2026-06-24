@@ -2,7 +2,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/vue";
 import { createMemoryHistory } from "vue-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App.vue";
-import { APP_METADATA } from "../src/config/appShell";
 import {
   resetProviderSettingsStateForTest,
 } from "../src/composables/useProviderSettings";
@@ -189,6 +188,133 @@ function modelList() {
   };
 }
 
+function liveAssistConfig() {
+  return {
+    currentPlanId: "plan-chat",
+    plans: [
+      {
+        id: "plan-chat",
+        streamType: "杂谈",
+        title: "晚间杂谈与功能演练",
+        theme: "测试 AI 观众氛围与控场提词",
+        bannedTopics: ["隐私推测", "争议引战"],
+        focusTopics: ["冷场救急", "弹幕风格选择"],
+        hostState: "想轻松播",
+        audienceGroupIds: ["group-support", "group-passerby", "group-rescue"],
+        topicCardIds: ["topic-why-nanabigv", "topic-style-choice", "topic-cold-rescue"],
+        outputMode: "manual_review",
+        updatedAt: "默认方案",
+      },
+    ],
+    audienceGroups: [
+      {
+        id: "group-support",
+        name: "捧哏组",
+        color: "#3b82f6",
+        enabled: true,
+        useCase: "负责接话、缓和气氛和轻量夸赞。",
+        frequency: 48,
+        averageLength: "短句",
+        questionRate: 35,
+        praiseRate: 55,
+        memeRate: 28,
+        roastRate: 8,
+        topicRate: 24,
+        silenceTriggerRate: 50,
+        languageStyles: ["弹幕腔", "克制"],
+        boundaryRules: ["禁止攻击主播", "禁止假装真实付费用户"],
+        memoryScope: "room_memes",
+      },
+      {
+        id: "group-rescue",
+        name: "控场救急组",
+        color: "#f59e0b",
+        enabled: true,
+        useCase: "主播沉默或话题断掉时主动补轻量问题。",
+        frequency: 26,
+        averageLength: "短句",
+        questionRate: 70,
+        praiseRate: 18,
+        memeRate: 18,
+        roastRate: 5,
+        topicRate: 58,
+        silenceTriggerRate: 82,
+        languageStyles: ["克制", "熟人"],
+        boundaryRules: ["禁止刷屏", "禁止引战"],
+        memoryScope: "last_session",
+      },
+    ],
+    topicCards: [
+      {
+        id: "topic-why-nanabigv",
+        title: "为什么做 NaNaBigV",
+        stage: "opening",
+        recommendedDanmaku: ["这个工具是给主播自己用的吗？"],
+        hostTalkingPoint: "其实最开始是为了解决直播冷场问题。",
+        unsuitableContent: ["暗示真实观众被替代"],
+        enabled: true,
+      },
+    ],
+    outline: {
+      opening: "说明今天会测试 NaNaBigV 的互动节奏。",
+      mainContent: "展示弹幕候选、主播提词和安全拦截。",
+      interactionPoints: ["问观众喜欢哪种弹幕风格"],
+      closing: "总结本场哪些控场建议最有用。",
+      forbiddenDetours: ["不要让 AI 假装真实付费用户"],
+    },
+    memeLibrary: {
+      roomMemes: ["今天先低压测试"],
+      catchphrases: ["先把节奏稳住"],
+      fanNames: ["陪跑员"],
+      disabledMemes: ["过度夸奖主播声音"],
+      recentMemes: ["别突然刷屏"],
+      expiredMemes: [],
+    },
+    safety: {
+      outputMode: "manual_review",
+      requireManualConfirmation: true,
+      basicRules: ["禁止攻击主播", "禁止伪造付费行为", "禁止假装真实用户经历", "禁止诱导消费"].map((label, index) => ({
+        id: `rule-${index}`,
+        label,
+        enabled: true,
+      })),
+      qualityFilters: ["重复过滤", "相似句过滤"].map((label, index) => ({
+        id: `filter-${index}`,
+        label,
+        enabled: true,
+      })),
+      maxGeneratedPerMinute: 8,
+      maxConsecutivePerTopic: 3,
+    },
+    generationRecords: [
+      {
+        id: "record-default-1",
+        happenedAt: "20:41:13",
+        content: "刚刚这个地方是不是可以展开讲讲？",
+        audienceGroupId: "group-rescue",
+        audienceGroupName: "控场救急组",
+        triggerReason: "主播沉默 18 秒",
+        status: "pending",
+        riskTags: ["低风险"],
+        similarity: 12,
+        userFeedback: "待确认",
+      },
+      {
+        id: "record-default-2",
+        happenedAt: "20:39:49",
+        content: "我刚充了舰长所以主播必须听我的。",
+        audienceGroupId: "group-support",
+        audienceGroupName: "捧哏组",
+        triggerReason: "高价值互动模拟",
+        status: "blocked",
+        riskTags: ["伪造付费行为"],
+        similarity: 8,
+        userFeedback: "安全规则拦截",
+      },
+    ],
+  };
+}
+
 function installInvokeMock(overrides: Partial<Record<string, unknown>> = {}) {
   mockInvoke.mockImplementation(async (command, payload) => {
     if (command in overrides) {
@@ -200,6 +326,8 @@ function installInvokeMock(overrides: Partial<Record<string, unknown>> = {}) {
     if (command === "save_provider_config") return payload?.config ?? loadedProviderConfig;
     if (command === "list_provider_models") return modelList();
     if (command === "test_provider_connection") return successProbe();
+    if (command === "load_live_assist_config") return liveAssistConfig();
+    if (command === "save_live_assist_config") return payload?.config ?? liveAssistConfig();
     if (command === "load_context_window") return emptyContextWindow;
     if (command === "load_memory_snapshot") return createMemorySnapshot();
     if (command === "submit_context_event") {
@@ -211,6 +339,13 @@ function installInvokeMock(overrides: Partial<Record<string, unknown>> = {}) {
     if (command === "clear_context_window") return emptyContextWindow;
     throw new Error(`unexpected command: ${command}`);
   });
+}
+
+function savedLiveAssistConfig(): ReturnType<typeof liveAssistConfig> | undefined {
+  const call = mockInvoke.mock.calls
+    .filter(([command]) => command === "save_live_assist_config")
+    .at(-1);
+  return (call?.[1] as { config?: ReturnType<typeof liveAssistConfig> } | undefined)?.config;
 }
 
 async function renderAt(path: string) {
@@ -231,10 +366,15 @@ async function renderAt(path: string) {
   };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   resetProviderSettingsStateForTest();
   mockInvoke.mockReset();
   installInvokeMock();
+  const { useLiveAssistConfig } = await import("../src/features/liveConfig/store");
+  await useLiveAssistConfig().updateConfig((draft) => {
+    Object.assign(draft, liveAssistConfig());
+  });
+  mockInvoke.mockClear();
 });
 
 afterEach(() => {
@@ -242,11 +382,22 @@ afterEach(() => {
 });
 
 describe("基础路由", () => {
-  it("默认首页跳转到弹幕姬工作台", async () => {
+  it("默认入口跳转到 NaNaBigV 工作台", async () => {
     await renderAt("/");
 
+    expect(await screen.findByRole("heading", { level: 1, name: "NaNaBigV" })).toBeInTheDocument();
+    expect(screen.getByText("AI 观众氛围与直播控场助手")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /进入中控台/ })).toHaveAttribute("href", "/live");
+    expect(screen.getByText("状态检查")).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /Provider 待测试/ })).toHaveClass("sb-conn--warn");
+  });
+
+  it("直播中控台展示运行态输入、候选和 blivechat 通道", async () => {
+    await renderAt("/live");
+
     expect(await screen.findByLabelText("自动投递")).toBeInTheDocument();
-    expect(screen.getByText("把调试段落拆成“目标 -> 过程 -> 结论”三段")).toBeInTheDocument();
+    expect(screen.getByText("弹幕候选流")).toBeInTheDocument();
+    expect(screen.getByText("主播提词")).toBeInTheDocument();
     const danmakuChannel = await screen.findByRole("region", { name: "blivechat 弹幕通道" });
     const giftChannel = screen.getByRole("region", { name: "blivechat 礼物通道" });
     const superChatChannel = screen.getByRole("region", { name: "blivechat SC通道" });
@@ -259,25 +410,107 @@ describe("基础路由", () => {
     expect(superChatChannel).toHaveTextContent("建议下一段切回剧情点评，不要一直卡在设置界面。");
     expect(superChatChannel).toHaveTextContent("通道关闭或自动投递暂停");
     expect(membershipChannel).toHaveTextContent("镜岛");
-    expect(membershipChannel).toHaveTextContent("排队中");
+    expect(membershipChannel).toHaveTextContent("被节流");
     expect(
       screen.queryByText("糖霜六号 [SC ¥30]：建议下一段切回剧情点评，不要一直卡在设置界面。"),
     ).not.toBeInTheDocument();
-    expect((await screen.findAllByText("Provider")).length).toBeGreaterThan(0);
     expect(await screen.findByRole("link", { name: /Provider 待测试/ })).toHaveClass("sb-conn--warn");
     expect(screen.getAllByText("待测试")).not.toHaveLength(0);
     expect(screen.getByText(/example\.com\/v1 · 模型 gpt-4\.1-mini · API Key 已配置/)).toBeInTheDocument();
     expect(mockInvoke).not.toHaveBeenCalledWith("test_provider_connection", undefined);
   });
 
-  it("侧边栏显示四个功能标签，底部保留设置和状态入口", async () => {
+  it("直播中控台手动审核候选会写回生成记录并投递采用内容", async () => {
+    const { useLiveAssistConfig } = await import("../src/features/liveConfig/store");
+    await useLiveAssistConfig().updateConfig((draft) => {
+      draft.generationRecords = [
+        {
+          id: "record-adopt",
+          happenedAt: "21:00:01",
+          content: "这条可以直接采用",
+          audienceGroupId: "group-support",
+          audienceGroupName: "捧哏组",
+          triggerReason: "测试采用",
+          status: "pending",
+          riskTags: ["低风险"],
+          similarity: 6,
+          userFeedback: "待确认",
+        },
+        {
+          id: "record-ignore",
+          happenedAt: "21:00:02",
+          content: "这条需要忽略",
+          audienceGroupId: "group-support",
+          audienceGroupName: "捧哏组",
+          triggerReason: "测试忽略",
+          status: "pending",
+          riskTags: ["低风险"],
+          similarity: 8,
+          userFeedback: "待确认",
+        },
+        {
+          id: "record-rewrite",
+          happenedAt: "21:00:03",
+          content: "这条需要改写",
+          audienceGroupId: "group-rescue",
+          audienceGroupName: "控场救急组",
+          triggerReason: "测试改写",
+          status: "pending",
+          riskTags: ["低风险"],
+          similarity: 11,
+          userFeedback: "待确认",
+        },
+      ];
+    });
+
+    const view = await renderAt("/live");
+
+    await fireEvent.click(screen.getAllByRole("button", { name: "采用" })[0]);
+    await waitFor(() => {
+      expect(savedLiveAssistConfig()?.generationRecords.find((record) => record.id === "record-adopt")).toMatchObject({
+        status: "adopted",
+        userFeedback: "手动采用并投递",
+      });
+    });
+    expect(await screen.findByText("这条可以直接采用")).toBeInTheDocument();
+
+    await fireEvent.click(screen.getAllByRole("button", { name: "忽略" })[0]);
+    await waitFor(() => {
+      expect(savedLiveAssistConfig()?.generationRecords.find((record) => record.id === "record-ignore")).toMatchObject({
+        status: "ignored",
+        userFeedback: "手动忽略",
+      });
+    });
+
+    await fireEvent.update(screen.getByRole("textbox", { name: "改写弹幕：这条需要改写" }), "改写后可以投递");
+    await fireEvent.click(screen.getByRole("button", { name: "改写" }));
+    await waitFor(() => {
+      expect(savedLiveAssistConfig()?.generationRecords.find((record) => record.id === "record-rewrite")).toMatchObject({
+        content: "改写后可以投递",
+        status: "rewritten",
+        userFeedback: "手动改写并投递",
+      });
+    });
+
+    await view.router.push("/danmaku-records");
+
+    expect(await screen.findByText("手动采用并投递")).toBeInTheDocument();
+    expect(screen.getByText("手动忽略")).toBeInTheDocument();
+    expect(screen.getAllByText("改写后可以投递").length).toBeGreaterThan(0);
+    expect(screen.getByText("手动改写并投递")).toBeInTheDocument();
+  });
+
+  it("侧边栏显示 MVP 功能标签，底部保留设置和状态入口", async () => {
     await renderAt("/");
 
     expect(screen.getByRole("navigation", { name: "主导航" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "弹幕姬" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "额度检查" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "观众信息" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "直播回顾" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "直播中控台" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "新建直播" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "AI 观众" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "话题库" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "安全设置" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "弹幕记录" })).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "设置" })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "新建" })).toBeNull();
     expect(screen.queryByRole("button", { name: "搜索" })).toBeNull();
@@ -287,22 +520,22 @@ describe("基础路由", () => {
     expect(screen.getAllByText("待测试").length).toBeGreaterThan(0);
   });
 
-  it("Provider 手动探活成功后首页和侧栏展示真实结果", async () => {
+  it("Provider 手动探活成功后工作台和侧栏展示真实结果", async () => {
     const view = await renderAt("/settings?tab=provider");
 
     await screen.findByDisplayValue(loadedProviderConfig.baseUrl);
     await fireEvent.click(screen.getByRole("button", { name: "测试连通性" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Provider 连通性测试通过");
 
-    await view.router.push("/danmaku");
+    await view.router.push("/live");
 
-    expect(await screen.findByText("可用")).toBeInTheDocument();
+    expect((await screen.findAllByText("可用")).length).toBeGreaterThan(0);
     expect(screen.getByText("182ms")).toBeInTheDocument();
     expect(screen.getByText(/最近测试 .*模型 gpt-4\.1-mini，耗时 182ms/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /模拟状态：自动投递运行中 .*example\.com\/v1/ })).toHaveClass("sb-conn--ok");
   });
 
-  it("Provider 手动探活失败后首页和侧栏展示错误态", async () => {
+  it("Provider 手动探活失败后工作台和侧栏展示错误态", async () => {
     installInvokeMock({ test_provider_connection: failureProbe() });
     const view = await renderAt("/settings?tab=provider");
 
@@ -310,10 +543,9 @@ describe("基础路由", () => {
     await fireEvent.click(screen.getByRole("button", { name: "测试连通性" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("provider 返回 HTTP 401");
 
-    await view.router.push("/danmaku");
+    await view.router.push("/live");
 
     expect(await screen.findAllByText("异常")).not.toHaveLength(0);
-    expect(screen.getByText(/provider 返回 HTTP 401/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Provider 异常：provider 返回 HTTP 401/ })).toHaveClass("sb-conn--error");
   });
 
@@ -370,24 +602,23 @@ describe("基础路由", () => {
     expect(await screen.findByText("Tauri 2 + Vue 3")).toBeInTheDocument();
   });
 
-  it("弹幕姬页开关只切换本地状态", async () => {
-    await renderAt("/danmaku");
+  it("直播中控台开关只切换本地状态", async () => {
+    await renderAt("/live");
 
     const toggle = await screen.findByRole("checkbox", { name: "自动投递" });
 
     expect(toggle).toBeChecked();
     await fireEvent.click(toggle);
     expect(toggle).not.toBeChecked();
-    expect(screen.getByText("自动投递已关闭，新的互动结果不会继续进入渲染队列。")).toBeInTheDocument();
     expect(screen.getAllByText("通道关闭或自动投递暂停").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /Provider 待测试/ })).toHaveClass("sb-conn--warn");
     expect(screen.getAllByText("待测试").length).toBeGreaterThan(0);
-    expect(localStorage.getItem("bigv.workbench")).toContain("\"key\":\"dispatch\"");
-    expect(localStorage.getItem("bigv.workbench")).toContain("\"enabled\":false");
+    expect(localStorage.getItem("nanabigv.workbench")).toContain("\"key\":\"dispatch\"");
+    expect(localStorage.getItem("nanabigv.workbench")).toContain("\"enabled\":false");
   });
 
-  it("弹幕姬页可提交主播语音文本并刷新上下文窗口", async () => {
-    await renderAt("/danmaku");
+  it("直播中控台可提交主播语音文本并刷新上下文窗口", async () => {
+    await renderAt("/live");
 
     const input = await screen.findByRole("textbox", { name: "主播语音文本" });
     await fireEvent.update(input, "主播刚说下一局换成高难模式");
@@ -404,7 +635,7 @@ describe("基础路由", () => {
     expect(input).toHaveValue("");
   });
 
-  it("弹幕姬页可连接 Echo-Live 并提交收到的文本", async () => {
+  it("直播中控台可连接 Echo-Live 并提交收到的文本", async () => {
     const sockets: MockWebSocket[] = [];
     const MockWebSocketConstructor = function (this: unknown, url: string) {
       const socket = new MockWebSocket(url);
@@ -413,7 +644,7 @@ describe("基础路由", () => {
     };
     Reflect.set(MockWebSocketConstructor, "OPEN", 1);
     vi.stubGlobal("WebSocket", MockWebSocketConstructor);
-    await renderAt("/danmaku");
+    await renderAt("/live");
 
     await fireEvent.click(await screen.findByRole("button", { name: "连接" }));
     expect(sockets[0]?.url).toBe("ws://127.0.0.1:3000");
@@ -455,7 +686,7 @@ describe("基础路由", () => {
     expect((await screen.findAllByText("Echo：外部文本进入上下文")).length).toBeGreaterThan(0);
   });
 
-  it("弹幕姬页展示 Echo-Live 提交失败诊断", async () => {
+  it("直播中控台展示 Echo-Live 提交失败诊断", async () => {
     installInvokeMock({
       submit_context_event: new Error("context submit failed"),
     });
@@ -467,7 +698,7 @@ describe("基础路由", () => {
     };
     Reflect.set(MockWebSocketConstructor, "OPEN", 1);
     vi.stubGlobal("WebSocket", MockWebSocketConstructor);
-    await renderAt("/danmaku");
+    await renderAt("/live");
 
     const initialConnectionButton = await screen.findByRole("button", { name: /连接|断开/ });
     if (initialConnectionButton.textContent?.includes("断开")) {
@@ -495,8 +726,8 @@ describe("基础路由", () => {
     expect(screen.getAllByText(/失败 [1-9]/).length).toBeGreaterThan(0);
   });
 
-  it("弹幕姬页可清空上下文窗口回到待输入状态", async () => {
-    await renderAt("/danmaku");
+  it("直播中控台可清空上下文窗口回到待输入状态", async () => {
+    await renderAt("/live");
 
     await fireEvent.update(
       await screen.findByRole("textbox", { name: "主播语音文本" }),
@@ -518,7 +749,7 @@ describe("基础路由", () => {
     installInvokeMock({
       submit_context_event: new Error("local ASR bridge unavailable"),
     });
-    await renderAt("/danmaku");
+    await renderAt("/live");
 
     const input = await screen.findByRole("textbox", { name: "主播语音文本" });
     await fireEvent.update(input, "这条不要丢");
@@ -531,198 +762,100 @@ describe("基础路由", () => {
     expect(screen.getAllByText("等待主播语音或 Echo-Live 文本输入。").length).toBeGreaterThan(0);
   });
 
-  it("额度检查页支持切换时间窗", async () => {
-    const view = await renderAt("/quota");
+  it("新建直播向导保存当前方案并进入中控台", async () => {
+    await renderAt("/setup");
 
-    expect(await screen.findByText("24 小时趋势")).toBeInTheDocument();
-    expect(screen.getByText("请求")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "24 小时 token 使用趋势" })).toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "模型统计" })).toBeInTheDocument();
-    expect(screen.getByText("gpt-4.1-mini")).toBeInTheDocument();
-    expect(screen.getByText("214,000")).toBeInTheDocument();
-    expect(view.container.querySelector("[data-testid='mock-pie-chart']")).not.toBeInTheDocument();
-    expect(view.container.querySelector("[data-testid='mock-line-chart']")).toHaveAttribute(
-      "data-chart-labels",
-      JSON.stringify(["00", "04", "08", "12", "16", "20"]),
-    );
-    expect(view.container.querySelector("[data-testid='mock-line-chart']")).toHaveAttribute(
-      "data-chart-series",
-      JSON.stringify([
-        { label: "输入", values: [22400, 18800, 49200, 64200, 74500, 89300], yAxisID: "y" },
-        { label: "输出", values: [6400, 5400, 12600, 16300, 21600, 30300], yAxisID: "y" },
-        { label: "失败重试", values: [1200, 900, 2400, 3500, 4400, 5840], yAxisID: "y" },
-        { label: "成本", values: [2.64, 2.18, 5.78, 7.42, 9.24, 11.46], yAxisID: "cost" },
-      ]),
-    );
+    expect(await screen.findByRole("heading", { level: 1, name: "新建直播辅助" })).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    await fireEvent.update(screen.getByLabelText("直播标题"), "测试直播方案");
+    await fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    await fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    await fireEvent.click(screen.getByRole("button", { name: "开始直播辅助" }));
 
-    await fireEvent.click(screen.getByRole("button", { name: "能力统计" }));
-    expect(await screen.findByRole("table", { name: "能力统计" })).toBeInTheDocument();
-    expect(screen.getByText("互动生成")).toBeInTheDocument();
-    expect(screen.getByText("196,000")).toBeInTheDocument();
-
-    await fireEvent.click(screen.getByRole("button", { name: "子系统统计" }));
-    expect(await screen.findByRole("table", { name: "子系统统计" })).toBeInTheDocument();
-    expect(screen.getByText("Provider 请求")).toBeInTheDocument();
-    expect(screen.getByText("峰值每小时 18 次")).toBeInTheDocument();
-
-    await fireEvent.click(screen.getByRole("button", { name: "7 天" }));
-
-    expect(await screen.findByText("7 天趋势")).toBeInTheDocument();
     await waitFor(() => {
-      expect(view.container.querySelector("[data-testid='mock-line-chart']")).toHaveAttribute(
-        "data-chart-labels",
-        JSON.stringify(["周一", "周二", "周三", "周四", "周五", "周六", "周日"]),
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "save_live_assist_config",
+        expect.objectContaining({
+          config: expect.objectContaining({ currentPlanId: expect.stringMatching(/^plan-/) }),
+        }),
+      );
+    });
+    expect(await screen.findByText("直播辅助中")).toBeInTheDocument();
+  });
+
+  it("AI 观众页可编辑观众组并保存到 Tauri 配置", async () => {
+    await renderAt("/audience-groups");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "AI 观众" })).toBeInTheDocument();
+    const nameInput = screen.getByLabelText("名称");
+    await fireEvent.update(nameInput, "捧哏加强组");
+    await fireEvent.click(screen.getByRole("button", { name: "保存观众组" }));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "save_live_assist_config",
+        expect.objectContaining({
+          config: expect.objectContaining({
+            audienceGroups: expect.arrayContaining([
+              expect.objectContaining({ name: "捧哏加强组" }),
+            ]),
+          }),
+        }),
       );
     });
   });
 
-  it("额度检查页会恢复上次选择的时间窗", async () => {
-    localStorage.setItem(`${APP_METADATA.storageKeyPrefix}.quotaWindow`, "30d");
+  it("话题库、安全设置和弹幕记录读取同一份直播辅助配置", async () => {
+    const view = await renderAt("/topics");
 
-    await renderAt("/quota");
+    expect(await screen.findByRole("heading", { level: 1, name: "话题库" })).toBeInTheDocument();
+    expect(screen.getAllByText("为什么做 NaNaBigV").length).toBeGreaterThan(0);
 
-    expect(await screen.findByText("30 天趋势")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "30 天" })).toHaveAttribute("aria-pressed", "true");
-  });
-
-  it("观众信息页支持切换选中观众并按筛选自动同步详情", async () => {
-    await renderAt("/audience");
-
-    expect(await screen.findByRole("heading", { level: 2, name: "阿黎" })).toBeInTheDocument();
-
-    await fireEvent.click(screen.getByRole("button", { name: /北街舟/ }));
-
-    expect(await screen.findByRole("heading", { level: 2, name: "北街舟" })).toBeInTheDocument();
-
-    await fireEvent.change(screen.getByRole("combobox", { name: "关系类型筛选" }), {
-      target: { value: "new" },
+    await view.router.push("/safety");
+    expect(await screen.findByRole("heading", { level: 1, name: "安全设置" })).toBeInTheDocument();
+    expect(screen.getByText("禁止伪造付费行为")).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole("button", { name: /仅提词/ }));
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "save_live_assist_config",
+        expect.objectContaining({
+          config: expect.objectContaining({
+            safety: expect.objectContaining({ outputMode: "prompt_only" }),
+          }),
+        }),
+      );
     });
 
-    expect(await screen.findByRole("heading", { level: 2, name: "糖霜六号" })).toBeInTheDocument();
+    await view.router.push("/danmaku-records");
+    expect(await screen.findByRole("heading", { level: 1, name: "弹幕记录" })).toBeInTheDocument();
+    expect(screen.getByText("刚刚这个地方是不是可以展开讲讲？")).toBeInTheDocument();
+    expect(screen.getByText("我刚充了舰长所以主播必须听我的。")).toBeInTheDocument();
   });
 
-  it("观众信息页会恢复筛选条件和上次选中的观众", async () => {
-    localStorage.setItem(`${APP_METADATA.storageKeyPrefix}.audienceActivityFilter`, "medium");
-    localStorage.setItem(`${APP_METADATA.storageKeyPrefix}.audienceSpendingFilter`, "low");
-    localStorage.setItem(`${APP_METADATA.storageKeyPrefix}.audienceRelationshipFilter`, "regular");
-    localStorage.setItem(`${APP_METADATA.storageKeyPrefix}.selectedAudienceId`, "jing-dao");
+  it("旧路由兼容重定向到 MVP 页面", async () => {
+    const view = await renderAt("/danmaku");
+    expect(view.router.currentRoute.value.fullPath).toBe("/live");
 
-    await renderAt("/audience");
-
-    expect(((await screen.findByRole("combobox", { name: "活跃度筛选" })) as HTMLSelectElement).value).toBe("medium");
-    expect((screen.getByRole("combobox", { name: "消费倾向筛选" }) as HTMLSelectElement).value).toBe("low");
-    expect((screen.getByRole("combobox", { name: "关系类型筛选" }) as HTMLSelectElement).value).toBe("regular");
-    expect(await screen.findByRole("heading", { level: 2, name: "镜岛" })).toBeInTheDocument();
-  });
-
-  it("直播回顾页显示主播快照和建议", async () => {
-    await renderAt("/review");
-
-    expect(await screen.findByText("主播：青栀")).toBeInTheDocument();
-    expect(screen.getByText("把调试段落拆成“目标 -> 过程 -> 结论”三段")).toBeInTheDocument();
-  });
-
-  it("观众信息和直播回顾页读取 MemoryStore 快照而不是 mockSnapshot 占位", async () => {
-    const baseMemorySnapshot = createMemorySnapshot();
-    const memorySnapshot = createMemorySnapshot({
-      hostProfile: {
-        ...baseMemorySnapshot.hostProfile,
-        streamerName: "主播：MemoryStore 测试",
-      },
-      audienceProfiles: [
-        {
-          ...baseMemorySnapshot.audienceProfiles[0],
-          id: "memory-store-audience",
-          name: "记忆层观众",
-          summary: "来自真实 MemoryStore 快照的观众画像。",
-          memories: [
-            {
-              id: "memory-store-record",
-              layer: "audience_profile",
-              summary: "这条记忆只存在于测试 MemoryStore 快照。",
-              confidence: "高置信",
-              updatedAt: "刚刚",
-              audienceId: "memory-store-audience",
-            },
-          ],
-        },
-        baseMemorySnapshot.audienceProfiles[1],
-      ],
-      suggestions: [
-        {
-          id: "memory-store-suggestion",
-          category: "记忆策略",
-          title: "来自 MemoryStore 的建议",
-          detail: "测试页面数据来源。",
-          priority: "高优先级",
-        },
-      ],
-      writeRecords: [
-        {
-          id: "write-accepted",
-          layer: "audience_profile",
-          status: "accepted",
-          summary: "阿黎在调试段落会主动起梗。",
-          reason: "重复出现且与既有画像一致，写入观众画像。",
-          updatedAt: "刚刚",
-          audienceId: "memory-store-audience",
-          riskFlags: [],
-        },
-        {
-          id: "write-quarantined",
-          layer: "long_term_fact",
-          status: "quarantined",
-          summary: "北街舟可能不喜欢节奏拉扯。",
-          reason: "单场观察不足，进入隔离区等待后续验证。",
-          updatedAt: "2 分钟前",
-          audienceId: "bei-jie-zhou",
-          riskFlags: ["单场观察", "画像漂移"],
-        },
-        {
-          id: "write-rejected",
-          layer: "host_profile",
-          status: "rejected",
-          summary: "主播应该改成高压催促风格。",
-          reason: "与主播设定冲突，拒绝写入。",
-          updatedAt: "3 分钟前",
-          riskFlags: ["设定冲突"],
-          conflictWith: "host-memory-1",
-        },
-      ],
+    await view.router.push("/audience");
+    await waitFor(() => {
+      expect(view.router.currentRoute.value.fullPath).toBe("/audience-groups");
     });
-    installInvokeMock({ load_memory_snapshot: memorySnapshot });
 
-    const view = await renderAt("/audience");
-
-    expect(await screen.findByRole("heading", { level: 2, name: "记忆层观众" })).toBeInTheDocument();
-    expect(screen.getByText("这条记忆只存在于测试 MemoryStore 快照。")).toBeInTheDocument();
+    await view.router.push("/quota");
+    await waitFor(() => {
+      expect(view.router.currentRoute.value.fullPath).toBe("/settings?tab=provider");
+    });
 
     await view.router.push("/review");
-
-    expect(await screen.findByText("主播：MemoryStore 测试")).toBeInTheDocument();
-    expect(screen.getByText("来自 MemoryStore 的建议")).toBeInTheDocument();
-    const writeStats = screen.getByLabelText("记忆写回状态统计");
-    expect(writeStats).toHaveTextContent("accepted1");
-    expect(writeStats).toHaveTextContent("quarantined1");
-    expect(writeStats).toHaveTextContent("rejected1");
-    expect(screen.getByText("阿黎在调试段落会主动起梗。")).toBeInTheDocument();
-    expect(screen.getAllByText("accepted").length).toBeGreaterThan(0);
-    expect(screen.getByText("重复出现且与既有画像一致，写入观众画像。")).toBeInTheDocument();
-    expect(screen.getByText("记忆层观众")).toBeInTheDocument();
-    expect(screen.getAllByText("quarantined").length).toBeGreaterThan(0);
-    expect(screen.getByText("单场观察不足，进入隔离区等待后续验证。")).toBeInTheDocument();
-    expect(screen.getByText("北街舟")).toBeInTheDocument();
-    expect(screen.getByText("画像漂移")).toBeInTheDocument();
-    expect(screen.getAllByText("rejected").length).toBeGreaterThan(0);
-    expect(screen.getByText("与主播设定冲突，拒绝写入。")).toBeInTheDocument();
-    expect(screen.getByText("未绑定观众")).toBeInTheDocument();
-    expect(screen.getByText("冲突：host-memory-1")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(view.router.currentRoute.value.fullPath).toBe("/danmaku-records");
+    });
   });
 
-  it("未知路由回到弹幕姬", async () => {
+  it("未知路由回到工作台", async () => {
     await renderAt("/missing");
 
-    expect(await screen.findByLabelText("自动投递")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "NaNaBigV" })).toBeInTheDocument();
   });
 
   it("未知设置 tab 回落到外观", async () => {

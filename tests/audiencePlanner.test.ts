@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ContextWindowSnapshot } from "../src/features/context/types";
+import type { AudienceGroupConfig } from "../src/features/liveConfig/types";
 import {
   AudiencePlanner,
   buildAudienceBatchGenerationPrompt,
@@ -56,6 +57,24 @@ describe("audience planner", () => {
     expect(cold.status.rhythmState).toBe("cold");
     expect(peak.status.rhythmState).toBe("peak");
     expect(peak.intents.length).toBeGreaterThan(cold.intents.length);
+  });
+
+  it("uses enabled audience groups as configured shadow audience profiles", () => {
+    const result = new AudiencePlanner("configured-groups", 240).plan({
+      contextWindow: contextWindow("主播说下一段会拆隐藏路线，这里是关键节点。"),
+      audienceGroups: [audienceGroup(), { ...audienceGroup(), id: "disabled", enabled: false }],
+      now: 35_000,
+    });
+
+    expect(result.status.shadowAudienceCount).toBe(1);
+    expect(result.intents[0]).toMatchObject({
+      audienceId: "group-question",
+      audienceName: "提问氛围组",
+      audienceKind: "shadow_profile",
+    });
+    expect(result.intents[0].styleHints).toEqual(
+      expect.arrayContaining(["追问", "帮助主播延展话题"]),
+    );
   });
 
   it("tracks planner-level throttling when channels are unavailable", () => {
@@ -183,6 +202,27 @@ function shadowIntent(
     contextRefs: ["主播语音"],
     needsGeneration: true,
     ...overrides,
+  };
+}
+
+function audienceGroup(): AudienceGroupConfig {
+  return {
+    id: "group-question",
+    name: "提问氛围组",
+    color: "#2563eb",
+    enabled: true,
+    useCase: "帮助主播延展话题",
+    frequency: 72,
+    averageLength: "短句",
+    questionRate: 70,
+    praiseRate: 20,
+    memeRate: 10,
+    roastRate: 0,
+    topicRate: 50,
+    silenceTriggerRate: 45,
+    languageStyles: ["追问", "礼貌"],
+    boundaryRules: ["不假装真实经历"],
+    memoryScope: "room_memes",
   };
 }
 

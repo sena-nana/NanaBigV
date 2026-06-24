@@ -1,4 +1,5 @@
 import type { ContextEventInput, ContextSourceKind, ContextWindowSnapshot } from "../context/types";
+import type { AudienceGroupConfig } from "../liveConfig/types";
 import type { MemoryStoreSnapshot, MemoryWriteInput } from "../memory/types";
 import type { ProviderError } from "../provider/types";
 import type { AudienceProviderBatchGenerationResult } from "./audienceGeneration";
@@ -40,7 +41,9 @@ interface WorkbenchMockDataSourceOptions {
   queue: BlivechatEventQueue;
   submitContextEvent: (event: ContextEventInput) => Promise<ContextWindowSnapshot>;
   updateContextWindow: (snapshot: ContextWindowSnapshot) => void;
+  shouldQueueInteraction?: (type: InteractionType) => boolean;
   canDeliverInteraction: (type: InteractionType) => boolean;
+  getAudienceGroups?: () => AudienceGroupConfig[];
   getMemorySnapshot?: () => MemoryStoreSnapshot | null;
   onChange: (status: MockSourceStatus, records: MockSourceRecord[]) => void;
   onSimulationStatusChange?: (status: AudienceSimulationStatus) => void;
@@ -213,6 +216,7 @@ export class WorkbenchMockDataSource {
       }
       const plan = this.planner.plan({
         contextWindow: contextSnapshot,
+        audienceGroups: this.options.getAudienceGroups?.(),
         memorySnapshot: this.options.getMemorySnapshot?.(),
         queueSnapshot: this.options.queue.snapshot(),
         now: this.now(),
@@ -224,12 +228,14 @@ export class WorkbenchMockDataSource {
       const deliveredRecords: BlivechatQueueRecord[] = [];
       for (const [index, event] of generation.events.entries()) {
         const happenedAt = this.now() + index * 150;
-        this.options.queue.enqueue(event, happenedAt);
-        const deliveryRecord = this.options.queue.deliverNext(
-          (queuedEvent) => this.options.canDeliverInteraction(queuedEvent.type),
-          happenedAt + 500,
-        );
-        if (deliveryRecord?.action === "deliver") deliveredRecords.push(deliveryRecord);
+        if (this.options.shouldQueueInteraction?.(event.type) ?? true) {
+          this.options.queue.enqueue(event, happenedAt);
+          const deliveryRecord = this.options.queue.deliverNext(
+            (queuedEvent) => this.options.canDeliverInteraction(queuedEvent.type),
+            happenedAt + 500,
+          );
+          if (deliveryRecord?.action === "deliver") deliveredRecords.push(deliveryRecord);
+        }
         interactionLabels.push(INTERACTION_LABELS[event.type]);
       }
       this.options.onPlanTrace?.({

@@ -1,12 +1,14 @@
 import {
-  BadgeDollarSign,
+  BookOpenText,
   Gauge,
   Bug,
+  ClipboardList,
   Info,
-  MessagesSquare,
   Palette,
-  ScrollText,
+  Radar,
   Server,
+  ShieldCheck,
+  SquarePen,
   Settings,
   UsersRound,
 } from "@lucide/vue";
@@ -64,10 +66,13 @@ export interface SidebarFooterStatus {
 }
 
 const WORKBENCH_NAV_ICONS: Record<WorkbenchNavItem["key"], Component> = {
-  danmaku: MessagesSquare,
-  quota: BadgeDollarSign,
-  audience: UsersRound,
-  review: ScrollText,
+  workspace: Gauge,
+  live: Radar,
+  setup: SquarePen,
+  audienceGroups: UsersRound,
+  topics: BookOpenText,
+  safety: ShieldCheck,
+  records: ClipboardList,
 };
 
 export const SIDEBAR_GLOBAL_ACTIONS: SidebarActionItem[] = [];
@@ -83,7 +88,7 @@ export const SIDEBAR_FOOTER_LINKS: SidebarFooterLink[] = [
 ];
 
 export const SIDEBAR_FOOTER_STATUS: SidebarFooterStatus = {
-  to: "/danmaku",
+  to: "/live",
   label: APP_SHELL_COPY.statusLabel,
   title: APP_SHELL_COPY.statusTitle,
   tone: "warn",

@@ -19,6 +19,8 @@ import {
   deriveAudienceViewFromMemory,
   deriveReviewViewFromMemory,
 } from "../memory/viewModels";
+import { useLiveAssistConfig } from "../liveConfig/store";
+import type { DanmakuGenerationRecord } from "../liveConfig/types";
 import {
   buildAudienceBatchGenerationPrompt,
   createInitialAudienceSimulationStatus,
@@ -63,6 +65,7 @@ import type {
 
 const STORAGE_KEY = `${appConfig.storageKeyPrefix}.workbench`;
 const { providerStatusSummary } = useProviderStatusSummary();
+const liveAssistConfig = useLiveAssistConfig();
 const EMPTY_CONTEXT_WINDOW: ContextWindowSnapshot = {
   windowStartedAt: 0,
   windowSeconds: 300,
@@ -232,7 +235,14 @@ function findToggle(toggles: RuntimeToggleState[], key: string): RuntimeToggleSt
 }
 
 function isChannelDisabled(type: InteractionEvent["type"], toggles: RuntimeToggleState[]) {
-  return !isMockInteractionDeliverable(type, toggles);
+  return !isRuntimeInteractionDeliverable(type, toggles);
+}
+
+function isRuntimeInteractionDeliverable(type: InteractionEvent["type"], toggles: RuntimeToggleState[]) {
+  const outputMode = liveAssistConfig.config.value.safety.outputMode;
+  if (outputMode === "prompt_only") return false;
+  if (outputMode === "manual_review" && type !== "danmaku") return false;
+  return isMockInteractionDeliverable(type, toggles);
 }
 
 function deriveNotices(view: DanmakuViewModel): RuntimeNotice[] {
@@ -602,8 +612,14 @@ const mockDataSource = new WorkbenchMockDataSource({
   updateContextWindow(next) {
     contextWindow.value = next;
   },
+  shouldQueueInteraction() {
+    return liveAssistConfig.config.value.safety.outputMode === "auto_assist";
+  },
   canDeliverInteraction(type) {
-    return isMockInteractionDeliverable(type, snapshot.value.danmaku.toggles);
+    return isRuntimeInteractionDeliverable(type, snapshot.value.danmaku.toggles);
+  },
+  getAudienceGroups() {
+    return liveAssistConfig.enabledAudienceGroups.value;
   },
   getMemorySnapshot() {
     return memorySnapshot.value;
@@ -654,6 +670,7 @@ const reviewView = computed(() => deriveReviewViewFromMemory(memorySnapshot.valu
 const runtimeInsight = computed(createRuntimeInsight);
 
 void refreshMemorySnapshot();
+void liveAssistConfig.load();
 
 function toggleRuntime(key: string) {
   const next = cloneSnapshot(snapshot.value);
@@ -685,10 +702,78 @@ function applyQueueToggles(toggles: RuntimeToggleState[]) {
   );
 }
 
+function enqueueControlDanmaku(input: {
+  audienceName: string;
+  content: string;
+  reason?: string;
+}) {
+  const queued = localEventQueue.enqueue({
+    type: "danmaku",
+    audienceName: input.audienceName,
+    content: input.content,
+  });
+  localEventQueue.deliverNext(
+    (event) => isRuntimeInteractionDeliverable(event.type, snapshot.value.danmaku.toggles),
+    Date.now(),
+  );
+  if (!isRuntimeInteractionDeliverable("danmaku", snapshot.value.danmaku.toggles)) {
+    localEventQueue.throttlePending(
+      (event) => event.id === queued.id,
+      input.reason ?? "安全输出模式限制",
+    );
+  }
+}
+
 function recordPlanTrace(trace: WorkbenchMockPlanTrace) {
   promptRecords.value = pushLimited(promptRecords.value, promptRecord(trace), 8);
   generationRecords.value = pushLimited(generationRecords.value, generationRecord(trace), 8);
+  void liveAssistConfig.appendGenerationRecords(generationRecordsForTrace(trace));
   void recordMemoryWriteback(trace);
+}
+
+function generationRecordsForTrace(trace: WorkbenchMockPlanTrace): DanmakuGenerationRecord[] {
+  const outputMode = liveAssistConfig.config.value.safety.outputMode;
+  const status: DanmakuGenerationRecord["status"] =
+    outputMode === "auto_assist" ? "adopted" : "pending";
+  const feedback =
+    outputMode === "auto_assist"
+      ? "自动辅助投递"
+      : outputMode === "prompt_only"
+        ? "仅提词模式候选"
+        : "待手动审核";
+  return trace.generatedEvents
+    .filter((event) => event.type === "danmaku")
+    .map((event, index) => {
+      const audience = audienceGroupForEvent(event);
+      return {
+        id: `${trace.id}-danmaku-${index + 1}`,
+        happenedAt: formatQueueTime(trace.happenedAt),
+        content: event.content,
+        audienceGroupId: audience.id,
+        audienceGroupName: audience.name,
+        triggerReason: `${trace.frameLabel} · ${generationSourceLabel(trace)}`,
+        status,
+        riskTags: ["低风险"],
+        similarity: 0,
+        userFeedback: feedback,
+      };
+    });
+}
+
+function audienceGroupForEvent(event: BlivechatEventInput) {
+  const groups = liveAssistConfig.config.value.audienceGroups;
+  const group =
+    groups.find((item) => item.id === event.audienceId) ??
+    groups.find((item) => item.name === event.audienceName);
+  return {
+    id: group?.id ?? event.audienceId ?? event.audienceName,
+    name: group?.name ?? event.audienceName,
+  };
+}
+
+function generationSourceLabel(trace: WorkbenchMockPlanTrace) {
+  if (trace.generationSource === "provider") return "Provider 生成";
+  return trace.generationError ? "Provider 失败本地兜底" : "本地兜底生成";
 }
 
 async function recordMemoryWriteback(trace: WorkbenchMockPlanTrace) {
@@ -963,5 +1048,6 @@ export function useWorkbenchStore() {
     disconnectEchoLive,
     clearWorkbenchContextWindow,
     toggleRuntime,
+    enqueueControlDanmaku,
   };
 }

@@ -246,7 +246,7 @@ describe("Lilia 外壳样式迁移", () => {
     expect(scrollbars).toContain("export function uninstallGlobalScrollbarVisibility()");
   });
 
-  it("侧边栏切换为 BigV 功能标签工作台布局", () => {
+  it("侧边栏切换为 NaNaBigV MVP 功能标签工作台布局", () => {
     const secondaryPanel = readFileSync(resolve("src/layouts/SecondaryPanel.vue"), "utf-8");
 
     expect(secondaryPanel).toContain("sb-section--actions");

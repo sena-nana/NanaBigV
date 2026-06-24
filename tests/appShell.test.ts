@@ -37,36 +37,23 @@ vi.mock("@tauri-apps/api/window", () => ({
   }),
 }));
 
-async function renderAppShell(initialRoute = "/danmaku") {
+async function renderAppShell(initialRoute = "/live") {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      {
-        path: "/danmaku",
-        component: { template: "<div>danmaku</div>" },
-        meta: { sidebar: "main", returnable: true },
-      },
-      {
-        path: "/quota",
-        component: { template: "<div>quota</div>" },
-        meta: { sidebar: "main", returnable: true },
-      },
-      {
-        path: "/audience",
-        component: { template: "<div>audience</div>" },
-        meta: { sidebar: "main", returnable: true },
-      },
-      {
-        path: "/review",
-        component: { template: "<div>review</div>" },
-        meta: { sidebar: "main", returnable: true },
-      },
+      { path: "/workspace", component: { template: "<div>workspace</div>" }, meta: { sidebar: "main", returnable: true } },
+      { path: "/live", component: { template: "<div>live</div>" }, meta: { sidebar: "main", returnable: true } },
+      { path: "/setup", component: { template: "<div>setup</div>" }, meta: { sidebar: "main", returnable: true } },
+      { path: "/audience-groups", component: { template: "<div>audience</div>" }, meta: { sidebar: "main", returnable: true } },
+      { path: "/topics", component: { template: "<div>topics</div>" }, meta: { sidebar: "main", returnable: true } },
+      { path: "/safety", component: { template: "<div>safety</div>" }, meta: { sidebar: "main", returnable: true } },
+      { path: "/danmaku-records", component: { template: "<div>records</div>" }, meta: { sidebar: "main", returnable: true } },
       {
         path: "/settings",
         component: { template: "<div>settings</div>" },
         meta: { sidebar: "settings", lockSidebar: true, returnable: false },
       },
-      { path: "/:pathMatch(.*)*", redirect: "/danmaku" },
+      { path: "/:pathMatch(.*)*", redirect: "/workspace" },
     ],
   });
   await router.push(initialRoute);
@@ -142,21 +129,23 @@ beforeEach(() => {
 });
 
 describe("AppShell sidebar", () => {
-  it("主侧边栏切换为 BigV 四个功能标签", async () => {
-    const view = await renderAppShell("/quota");
+  it("主侧边栏切换为 NaNaBigV MVP 功能标签", async () => {
+    const view = await renderAppShell("/live");
     const nav = view.getByRole("navigation", { name: "主导航" });
 
     expect(nav).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "弹幕姬" })).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "额度检查" })).toHaveClass("is-active");
-    expect(within(nav).getByRole("link", { name: "观众信息" })).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "直播回顾" })).toBeInTheDocument();
-    expect(sidebarRowForText(view.container, "额度检查")).toHaveClass("sb-tree__row", "is-active");
-    expect(view.queryByText("BigV 工作台")).toBeNull();
+    expect(within(nav).getByRole("link", { name: "工作台" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "直播中控台" })).toHaveClass("is-active");
+    expect(within(nav).getByRole("link", { name: "新建直播" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "AI 观众" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "话题库" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "安全设置" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "弹幕记录" })).toBeInTheDocument();
+    expect(sidebarRowForText(view.container, "直播中控台")).toHaveClass("sb-tree__row", "is-active");
   });
 
   it("左上角按钮切换左侧栏折叠状态并写回本地存储", async () => {
-    const view = await renderAppShell("/danmaku");
+    const view = await renderAppShell("/live");
     const shell = shellElement(view.container);
     const collapse = view.getByRole("button", { name: "折叠左侧栏" });
 
@@ -248,23 +237,23 @@ describe("AppShell sidebar", () => {
     });
     expect(view.getByRole("button", { name: /关于/ })).toHaveClass("is-active");
 
-    await view.router.push("/danmaku");
+    await view.router.push("/live");
     expect(shell).toHaveClass("is-sidebar-collapsed");
     expect(localStorage.getItem(SIDEBAR_CONFIG.collapsedStorageKey)).toBe("1");
   });
 
   it("设置页返回进入设置前的主窗口路由", async () => {
-    const view = await renderAppShell("/review");
+    const view = await renderAppShell("/danmaku-records");
 
     await view.router.push("/settings?tab=about");
     await fireEvent.click(view.getByRole("button", { name: "返回" }));
     await waitFor(() => {
-      expect(view.router.currentRoute.value.fullPath).toBe("/review");
+      expect(view.router.currentRoute.value.fullPath).toBe("/danmaku-records");
     });
   });
 
   it("标题栏窗口按钮会调用 Tauri 窗口控制", async () => {
-    const view = await renderAppShell("/danmaku");
+    const view = await renderAppShell("/live");
 
     await fireEvent.click(view.getByRole("button", { name: "最小化" }));
     await fireEvent.click(view.getByRole("button", { name: "最大化" }));
