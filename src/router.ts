@@ -5,10 +5,13 @@ import {
 } from "vue-router";
 import AppShell from "./layouts/AppShell.vue";
 
-const DanmakuPage = () => import("./pages/Home.vue");
-const QuotaPage = () => import("./pages/Quota.vue");
-const AudiencePage = () => import("./pages/Audience.vue");
-const ReviewPage = () => import("./pages/Review.vue");
+const WorkspacePage = () => import("./pages/Workspace.vue");
+const LiveConsolePage = () => import("./pages/LiveConsole.vue");
+const LiveSetupPage = () => import("./pages/LiveSetup.vue");
+const AudienceGroupsPage = () => import("./pages/AudienceGroups.vue");
+const TopicLibraryPage = () => import("./pages/TopicLibrary.vue");
+const SafetySettingsPage = () => import("./pages/SafetySettings.vue");
+const DanmakuRecordsPage = () => import("./pages/DanmakuRecords.vue");
 const SettingsPage = () => import("./pages/Settings.vue");
 
 export function createBigVRouter(history: RouterHistory = createWebHistory()) {
@@ -20,11 +23,18 @@ export function createBigVRouter(history: RouterHistory = createWebHistory()) {
         component: AppShell,
         meta: { sidebar: "main", returnable: true },
         children: [
-          { path: "", redirect: "/danmaku" },
-          { path: "danmaku", component: DanmakuPage, meta: { sidebar: "main", returnable: true } },
-          { path: "quota", component: QuotaPage, meta: { sidebar: "main", returnable: true } },
-          { path: "audience", component: AudiencePage, meta: { sidebar: "main", returnable: true } },
-          { path: "review", component: ReviewPage, meta: { sidebar: "main", returnable: true } },
+          { path: "", redirect: "/workspace" },
+          { path: "workspace", component: WorkspacePage, meta: { sidebar: "main", returnable: true } },
+          { path: "live", component: LiveConsolePage, meta: { sidebar: "main", returnable: true } },
+          { path: "setup", component: LiveSetupPage, meta: { sidebar: "main", returnable: true } },
+          { path: "audience-groups", component: AudienceGroupsPage, meta: { sidebar: "main", returnable: true } },
+          { path: "topics", component: TopicLibraryPage, meta: { sidebar: "main", returnable: true } },
+          { path: "safety", component: SafetySettingsPage, meta: { sidebar: "main", returnable: true } },
+          { path: "danmaku-records", component: DanmakuRecordsPage, meta: { sidebar: "main", returnable: true } },
+          { path: "danmaku", redirect: "/live" },
+          { path: "audience", redirect: "/audience-groups" },
+          { path: "quota", redirect: "/settings?tab=provider" },
+          { path: "review", redirect: "/danmaku-records" },
           {
             path: "settings",
             component: SettingsPage,
@@ -32,7 +42,7 @@ export function createBigVRouter(history: RouterHistory = createWebHistory()) {
           },
         ],
       },
-      { path: "/:pathMatch(.*)*", redirect: "/danmaku" },
+      { path: "/:pathMatch(.*)*", redirect: "/workspace" },
     ],
   });
 }

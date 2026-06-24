@@ -1,6 +1,13 @@
 import type { ContextEvent, ContextSourceKind } from "../context/types";
 
-export type WorkbenchNavKey = "danmaku" | "quota" | "audience" | "review";
+export type WorkbenchNavKey =
+  | "workspace"
+  | "live"
+  | "setup"
+  | "audienceGroups"
+  | "topics"
+  | "safety"
+  | "records";
 export type InteractionType = "danmaku" | "gift" | "super_chat" | "membership";
 export type StatusTone = "ok" | "warn" | "error" | "info";
 export type UsageWindowKey = "24h" | "7d" | "30d";

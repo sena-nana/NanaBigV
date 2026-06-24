@@ -307,7 +307,7 @@ impl ProviderClient {
             messages: vec![
                 ProviderMessage {
                     role: "system".to_string(),
-                    content: "你是 BigV 的本地单直播间互动生成层。只返回符合用户约束的 JSON，不要输出解释。"
+                    content: "你是 NaNaBigV 的本地单直播间互动生成层。只返回符合用户约束的 JSON，不要输出解释。"
                         .to_string(),
                 },
                 ProviderMessage {

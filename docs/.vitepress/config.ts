@@ -5,8 +5,8 @@ const isProjectPages = repository && !repository.endsWith(".github.io");
 const base = process.env.GITHUB_ACTIONS && isProjectPages ? `/${repository}/` : "/";
 
 export default defineConfig({
-  title: "BigV",
-  description: "AI audience simulation control console for a single livestream room.",
+  title: "NaNaBigV",
+  description: "AI audience atmosphere and livestream control assistant for a single local room.",
   base,
   vite: {
     build: {

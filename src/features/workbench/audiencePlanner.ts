@@ -1,4 +1,5 @@
 import type { ContextEvent, ContextWindowSnapshot } from "../context/types";
+import type { AudienceGroupConfig } from "../liveConfig/types";
 import type { MemoryStoreSnapshot, MemoryWriteInput } from "../memory/types";
 import type { BlivechatEventInput, BlivechatQueueSnapshot } from "./eventRuntime";
 import type {
@@ -45,6 +46,7 @@ export interface PlannerAudienceProfile {
 
 interface AudiencePlanInput {
   contextWindow: ContextWindowSnapshot;
+  audienceGroups?: AudienceGroupConfig[];
   memorySnapshot?: MemoryStoreSnapshot | null;
   queueSnapshot?: BlivechatQueueSnapshot;
   canDeliverInteraction?: (type: InteractionType) => boolean;
@@ -132,7 +134,9 @@ export class AudiencePlanner {
   plan(input: AudiencePlanInput): AudiencePlanResult {
     const rhythmState = inferRhythm(input.contextWindow);
     const memoryAudiences = buildMemoryAudienceProfiles(input.memorySnapshot);
-    const audiencePool = [...memoryAudiences, ...this.shadowAudiences];
+    const configuredAudiences = buildConfiguredAudienceProfiles(input.audienceGroups);
+    const shadowAudiences = configuredAudiences.length > 0 ? configuredAudiences : this.shadowAudiences;
+    const audiencePool = [...memoryAudiences, ...shadowAudiences];
     const targetCount = targetIntentCount(rhythmState, input.contextWindow, input.queueSnapshot);
     const counters: PlannerCounters = { ...EMPTY_COUNTERS };
     const rng = createRng(`${this.seed}:${this.tickIndex}:${input.now}:${latestContextText(input.contextWindow)}`);
@@ -169,7 +173,7 @@ export class AudiencePlanner {
         llmBatchCallCount: this.llmBatchCallCount,
         localGeneratedCount: this.localGeneratedCount,
         memoryAudienceCount: memoryAudiences.length,
-        shadowAudienceCount: this.shadowAudiences.length,
+        shadowAudienceCount: shadowAudiences.length,
       }),
     };
   }
@@ -452,6 +456,42 @@ function buildMemoryAudienceProfiles(snapshot?: MemoryStoreSnapshot | null): Pla
     ],
     archetype: profile.summary,
   }));
+}
+
+function buildConfiguredAudienceProfiles(groups?: AudienceGroupConfig[]): PlannerAudienceProfile[] {
+  return (groups ?? [])
+    .filter((group) => group.enabled)
+    .map((group) => {
+      const activityLevel: AudienceActivityLevel =
+        group.frequency >= 65 ? "high" : group.frequency >= 35 ? "medium" : "low";
+      const relationship: AudienceRelationship =
+        group.memoryScope === "host_profile" || group.memoryScope === "room_memes"
+          ? "regular"
+          : "new";
+      const styleHints = [
+        ...group.languageStyles,
+        group.useCase,
+        group.averageLength,
+        `提问${group.questionRate}%`,
+        `夸奖${group.praiseRate}%`,
+        `玩梗${group.memeRate}%`,
+        `吐槽${group.roastRate}%`,
+        `冷场触发${group.silenceTriggerRate}%`,
+        ...group.boundaryRules.slice(0, 2),
+      ].filter(Boolean);
+
+      return {
+        id: group.id,
+        name: group.name,
+        kind: "shadow_profile",
+        activityLevel,
+        spendingTier: "low",
+        relationship,
+        languageStyle: group.languageStyles.join(" / ") || group.useCase,
+        styleHints,
+        archetype: group.useCase,
+      };
+    });
 }
 
 function inferRhythm(window: ContextWindowSnapshot): AudienceRhythmState {

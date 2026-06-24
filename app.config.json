@@ -1,13 +1,13 @@
 {
-  "appName": "bigv",
-  "productTitle": "BigV",
+  "appName": "nanabigv",
+  "productTitle": "NaNaBigV",
   "version": "0.1.0",
-  "identifier": "com.bigv.desktop",
-  "storageKeyPrefix": "bigv",
+  "identifier": "com.nanabigv.desktop",
+  "storageKeyPrefix": "nanabigv",
   "shell": {
-    "homeTitle": "弹幕姬",
+    "homeTitle": "工作台",
     "workspaceSectionTitle": "工作台",
-    "statusLabel": "模拟",
-    "statusTitle": "模拟状态"
+    "statusLabel": "直播辅助",
+    "statusTitle": "直播辅助状态"
   }
 }

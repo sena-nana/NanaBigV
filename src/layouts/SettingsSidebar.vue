@@ -14,7 +14,7 @@ defineProps<{
   <aside class="secondary-panel settings-sidebar" aria-label="设置分类">
     <div class="settings-sidebar__head">
       <RouterLink
-        :to="returnTo || '/danmaku'"
+        :to="returnTo || '/workspace'"
         custom
         v-slot="{ navigate }"
       >

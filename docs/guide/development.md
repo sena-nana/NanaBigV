@@ -2,14 +2,14 @@
 
 ## 项目定位
 
-当前仓库是 BigV 的桌面端工程骨架，技术栈为 Tauri 2 + Vue 3 + TypeScript。现阶段业务实现仍基于初始桌面壳，本仓库首先承载文档、工程工具链和后续业务接入边界。
+当前仓库是 NaNaBigV 的桌面端工程，技术栈为 Tauri 2 + Vue 3 + TypeScript。产品定位为本地单直播间的 AI 观众氛围与直播控场助手，MVP 已围绕工作台、直播中控台、新建直播、AI 观众组、话题库、安全设置和弹幕记录组织。
 
 ## 项目结构
 
 ```text
-BigV/
-├── src/                 # Vue 3 前端壳层与页面骨架
-├── src-tauri/           # Tauri 2 Rust 端
+NaNaBigV/
+├── src/                 # Vue 3 前端页面、运行态和功能模块
+├── src-tauri/           # Tauri 2 Rust 命令与本地 store
 ├── docs/                # VitePress 文档站
 ├── tests/               # Vitest + Testing Library
 ├── scripts/             # 本地开发脚本
@@ -17,6 +17,13 @@ BigV/
 ├── DESIGN.md
 └── AGENTS.md
 ```
+
+关键落点：
+
+- `src/features/liveConfig/`：直播方案、观众组、话题库、安全设置和生成记录的前端类型、API 与 store。
+- `src-tauri/src/live_config.rs`：Tauri 本地配置读写命令。
+- `src/features/workbench/`：主播语音、Echo-Live、planner、eventRuntime、provider 和记忆写回的运行态。
+- `src/pages/`：NaNaBigV MVP 信息架构页面。
 
 ## 本地运行
 
@@ -61,5 +68,7 @@ yarn verify
 
 ## 当前注意事项
 
-- 首页、扩展页和应用文案仍是初始占位，不代表 BigV 的最终产品实现。
-- 若开始接入业务能力，先对齐 `docs/architecture.md` 与 `docs/todo.md`，再决定代码落点。
+- V1 仍固定为本地单机、单直播间、单操作者，不提前扩展多租户、云调度或多直播间并发。
+- 主播语音是主输入链路，Echo-Live 与视觉上下文只作为增强源。
+- 输出类型仍固定为 `danmaku`、`gift`、`super_chat`、`membership`。
+- 安全设置默认要求人工确认，不把 AI 输出包装成真实观众或真实付费行为。

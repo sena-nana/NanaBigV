@@ -5,6 +5,7 @@ const MAIN_WINDOW_LABEL: &str = "main";
 const BG: Color = Color(0x18, 0x18, 0x18, 0xFF);
 
 mod context;
+mod live_config;
 mod memory;
 mod provider;
 mod window_state;
@@ -48,6 +49,8 @@ pub fn run() {
             context::submit_context_event,
             context::load_context_window,
             context::clear_context_window,
+            live_config::load_live_assist_config,
+            live_config::save_live_assist_config,
             memory::load_memory_snapshot,
             memory::retrieve_memory,
             memory::submit_memory_write,
