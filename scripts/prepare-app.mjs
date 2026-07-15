@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
-for (const script of ["check-package-manager.mjs", "sync-app-config.mjs"]) {
+for (const script of ["check-toolchain.ts", "sync-app-config.mjs"]) {
   const result = spawnSync("node", [`scripts/${script}`], {
     cwd: root,
     stdio: "inherit",
