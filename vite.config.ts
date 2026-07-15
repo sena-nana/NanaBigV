@@ -8,11 +8,8 @@ const appConfig = JSON.parse(readFileSync(new URL("./app.config.json", import.me
   storageKeyPrefix: string;
 };
 
-// @ts-expect-error process 是 Node.js 全局对象
 const host = process.env.TAURI_DEV_HOST;
-// @ts-expect-error process 是 Node.js 全局对象
 const templateDevPort = Number.parseInt(process.env.TAURI_TEMPLATE_DEV_PORT ?? "", 10);
-// @ts-expect-error process 是 Node.js 全局对象
 const strictPort = process.env.TAURI_TEMPLATE_DEV_STRICT_PORT === "1";
 const port = Number.isInteger(templateDevPort) ? templateDevPort : 1420;
 
@@ -43,10 +40,6 @@ export default defineConfig(async () => ({
     watch: {
       ignored: ["**/src-tauri/**"],
     },
-  },
-  test: {
-    environment: "jsdom",
-    setupFiles: ["./tests/setupTests.ts"],
   },
 }));
 

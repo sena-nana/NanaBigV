@@ -27,12 +27,12 @@ NaNaBigV/
 
 ## 本地运行
 
-本仓库通过 Corepack 使用 Yarn 4。建议从仓库根目录执行命令。
+本仓库固定使用 Node.js 26.5.0、Corepack 0.35.0 和 Yarn 4.17.1。Node.js 26 不再内置 Corepack，建议从仓库根目录执行命令。
 
 ```bash
+npm install --global corepack@0.35.0
 corepack enable
-corepack prepare yarn@4.14.1 --activate
-yarn install
+corepack yarn install --immutable
 yarn dev
 yarn tauri:dev
 ```

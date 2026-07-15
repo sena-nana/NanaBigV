@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
+import { checkToolchain } from "../scripts/check-toolchain.ts";
+
 function scriptEnv(extra: Record<string, string>) {
   const env = { ...process.env };
   for (const key of Object.keys(env)) {
@@ -37,10 +39,10 @@ describe("单应用模板工具链", () => {
     const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf-8"));
 
     expect(pkg.workspaces).toBeUndefined();
-    expect(pkg.packageManager).toBe("yarn@4.14.1");
+    expect(pkg.packageManager).toMatch(/^yarn@4\.17\.1\+sha512\./);
     expect(pkg.scripts).toMatchObject({
       "sync:app-config": "node scripts/sync-app-config.mjs",
-      "check:package-manager": "node scripts/check-package-manager.mjs",
+      "check:toolchain": "node scripts/check-toolchain.ts",
       predev: "node scripts/prepare-app.mjs",
       dev: "vite",
       prebuild: "node scripts/prepare-app.mjs",
@@ -53,7 +55,7 @@ describe("单应用模板工具链", () => {
       tauri: "tauri",
       "tauri:dev": "node scripts/tauri-dev.mjs",
       "tauri:build": "tauri build",
-      verify: "yarn test && yarn build && cargo check --manifest-path src-tauri/Cargo.toml",
+      verify: "yarn typecheck:node-scripts && yarn test && yarn build && cargo check --manifest-path src-tauri/Cargo.toml",
     });
   });
 
@@ -82,17 +84,31 @@ describe("单应用模板工具链", () => {
     expect(cargo).not.toContain("r2d2");
   });
 
-  it("包管理器检查接受 Yarn 4 并拒绝其他入口", () => {
-    const ok = spawnSync("node", ["scripts/check-package-manager.mjs"], {
+  it("工具链检查要求 Node 26 和项目锁定的 Yarn 版本", () => {
+    const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf-8")) as {
+      packageManager: string;
+    };
+    expect(checkToolchain({
+      nodeVersion: "26.5.0",
+      packageManager: pkg.packageManager,
+      userAgent: "yarn/4.17.1 npm/? node/26.5.0",
+    })).toEqual([]);
+    expect(checkToolchain({
+      nodeVersion: "25.8.1",
+      packageManager: pkg.packageManager,
+      userAgent: "yarn/4.16.0 npm/? node/25.8.1",
+    })).toHaveLength(2);
+
+    const ok = spawnSync("node", ["scripts/check-toolchain.ts"], {
       cwd: resolve("."),
       env: scriptEnv({
-        npm_config_user_agent: "yarn/4.14.1 npm/? node/?",
+        npm_config_user_agent: "yarn/4.17.1 npm/? node/26.5.0",
       }),
       encoding: "utf-8",
     });
     expect(ok.status).toBe(0);
 
-    const bad = spawnSync("node", ["scripts/check-package-manager.mjs"], {
+    const bad = spawnSync("node", ["scripts/check-toolchain.ts"], {
       cwd: resolve("."),
       env: scriptEnv({
         npm_config_user_agent: "npm/11.0.0 node/?",
@@ -100,7 +116,6 @@ describe("单应用模板工具链", () => {
       encoding: "utf-8",
     });
     expect(bad.status).toBe(1);
-    expect(bad.stderr).toContain(`${appConfig().productTitle} requires Yarn 4 through Corepack.`);
   });
 
   it("Tauri dev 脚本 dry-run 输出动态端口配置", () => {
