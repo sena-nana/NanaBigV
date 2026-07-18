@@ -39,7 +39,7 @@ describe("单应用模板工具链", () => {
     const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf-8"));
 
     expect(pkg.workspaces).toBeUndefined();
-    expect(pkg.packageManager).toMatch(/^yarn@4\.17\.1\+sha512\./);
+    expect(pkg.packageManager).toMatch(/^pnpm@4\.17\.1\+sha512\./);
     expect(pkg.scripts).toMatchObject({
       "sync:app-config": "node scripts/sync-app-config.mjs",
       "check:toolchain": "node scripts/check-toolchain.ts",
@@ -55,7 +55,7 @@ describe("单应用模板工具链", () => {
       tauri: "tauri",
       "tauri:dev": "node scripts/tauri-dev.mjs",
       "tauri:build": "tauri build",
-      verify: "yarn typecheck:node-scripts && yarn test && yarn build && cargo check --manifest-path src-tauri/Cargo.toml",
+      verify: "pnpm typecheck:node-scripts && pnpm test && pnpm build && cargo check --manifest-path src-tauri/Cargo.toml",
     });
   });
 
@@ -84,25 +84,25 @@ describe("单应用模板工具链", () => {
     expect(cargo).not.toContain("r2d2");
   });
 
-  it("工具链检查要求 Node 26 和项目锁定的 Yarn 版本", () => {
+  it("工具链检查要求 Node 26 和项目锁定的 pnpm 版本", () => {
     const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf-8")) as {
       packageManager: string;
     };
     expect(checkToolchain({
       nodeVersion: "26.5.0",
       packageManager: pkg.packageManager,
-      userAgent: "yarn/4.17.1 npm/? node/26.5.0",
+      userAgent: "pnpm/4.17.1 npm/? node/26.5.0",
     })).toEqual([]);
     expect(checkToolchain({
       nodeVersion: "25.8.1",
       packageManager: pkg.packageManager,
-      userAgent: "yarn/4.16.0 npm/? node/25.8.1",
+      userAgent: "pnpm/4.16.0 npm/? node/25.8.1",
     })).toHaveLength(2);
 
     const ok = spawnSync("node", ["scripts/check-toolchain.ts"], {
       cwd: resolve("."),
       env: scriptEnv({
-        npm_config_user_agent: "yarn/4.17.1 npm/? node/26.5.0",
+        npm_config_user_agent: "pnpm/4.17.1 npm/? node/26.5.0",
       }),
       encoding: "utf-8",
     });
@@ -152,8 +152,8 @@ describe("单应用模板工具链", () => {
     const pages = readFileSync(resolve(".github/workflows/pages.yml"), "utf-8");
     const combined = [ci, release, pages].join("\n");
 
-    expect(ci).toContain("corepack yarn verify");
-    expect(ci).toContain("corepack yarn docs:build");
+    expect(ci).toContain("pnpm verify");
+    expect(ci).toContain("pnpm docs:build");
     expect(ci).toContain("src-tauri/target");
     expect(release).toContain("projectPath: .");
     expect(release).toContain("Get-Content app.config.json -Raw");

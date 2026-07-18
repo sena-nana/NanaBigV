@@ -27,23 +27,23 @@ NaNaBigV/
 
 ## 本地运行
 
-本仓库固定使用 Node.js 26.5.0、Corepack 0.35.0 和 Yarn 4.17.1。Node.js 26 不再内置 Corepack，建议从仓库根目录执行命令。
+本仓库固定使用 Node.js 26.5.0、Corepack 0.35.0 和 pnpm 4.17.1。Node.js 26 不再内置 Corepack，建议从仓库根目录执行命令。
 
 ```bash
 npm install --global corepack@0.35.0
 corepack enable
-corepack yarn install --immutable
-yarn dev
-yarn tauri:dev
+pnpm install --frozen-lockfile
+pnpm dev
+pnpm tauri:dev
 ```
 
-`yarn tauri:dev` 会自动寻找可用本地端口，再把对应 `devUrl` 传给 Tauri。
+`pnpm tauri:dev` 会自动寻找可用本地端口，再把对应 `devUrl` 传给 Tauri。
 
 ## 文档开发
 
 ```bash
-yarn docs:dev
-yarn docs:build
+pnpm docs:dev
+pnpm docs:build
 ```
 
 文档站用于固定 V1 边界、架构和开发路线。涉及产品边界、架构职责或 TODO 顺序的改动，优先同步文档。
@@ -51,20 +51,20 @@ yarn docs:build
 ## 验证
 
 ```bash
-yarn test
-yarn build
+pnpm test
+pnpm build
 cargo check --manifest-path src-tauri/Cargo.toml
-yarn docs:build
-yarn verify
+pnpm docs:build
+pnpm verify
 ```
 
-- `yarn test`：前端单测。
-- `yarn build`：前端构建。
+- `pnpm test`：前端单测。
+- `pnpm build`：前端构建。
 - `cargo check --manifest-path src-tauri/Cargo.toml`：Tauri Rust 编译检查。
-- `yarn docs:build`：文档站构建与链接基础校验。
-- `yarn verify`：串行运行前端测试、前端构建和 Rust 编译检查。
+- `pnpm docs:build`：文档站构建与链接基础校验。
+- `pnpm verify`：串行运行前端测试、前端构建和 Rust 编译检查。
 
-按影响范围运行最小必要验证。文档改动至少建议执行 `yarn docs:build`。
+按影响范围运行最小必要验证。文档改动至少建议执行 `pnpm docs:build`。
 
 ## 当前注意事项
 

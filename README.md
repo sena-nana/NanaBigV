@@ -52,22 +52,22 @@ NaNaBigV 是一个面向主播的本地直播辅助产品，用于直播演练�
 
 ## 本地命令
 
-项目工具链固定为 Node.js 26.5.0、Corepack 0.35.0 和 Yarn 4.17.1。Node.js 26 不再内置 Corepack，首次使用前需显式安装。
+项目工具链固定为 Node.js 26.5.0、Corepack 0.35.0 和 pnpm 4.17.1。Node.js 26 不再内置 Corepack，首次使用前需显式安装。
 
 ```bash
 npm install --global corepack@0.35.0
 corepack enable
-corepack yarn install --immutable
-yarn dev
-yarn tauri:dev
-yarn docs:dev
-yarn docs:build
+pnpm install --frozen-lockfile
+pnpm dev
+pnpm tauri:dev
+pnpm docs:dev
+pnpm docs:build
 ```
 
 如需完整验证，可执行：
 
 ```bash
-yarn verify
+pnpm verify
 ```
 
-`yarn verify` 会串行运行前端测试、前端构建和 Tauri Rust 编译检查。
+`pnpm verify` 会串行运行前端测试、前端构建和 Tauri Rust 编译检查。

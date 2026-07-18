@@ -21,12 +21,12 @@ export function checkToolchain({
     issues.push(`Expected Node.js 26.x, detected ${nodeVersion || "an unknown version"}.`);
   }
 
-  const expectedYarn = /^yarn@([^+]+)/.exec(packageManager)?.[1];
-  const detectedYarn = /\byarn\/([^\s]+)/.exec(userAgent)?.[1];
+  const expectedYarn = /^pnpm@([^+]+)/.exec(packageManager)?.[1];
+  const detectedYarn = /\bpnpm\/([^\s]+)/.exec(userAgent)?.[1];
   if (!expectedYarn) {
     issues.push(`Invalid packageManager declaration: ${packageManager || "missing"}.`);
   } else if (detectedYarn !== expectedYarn) {
-    issues.push(`Expected Yarn ${expectedYarn}, detected ${detectedYarn ?? "a non-Yarn entrypoint"}.`);
+    issues.push(`Expected pnpm ${expectedYarn}, detected ${detectedYarn ?? "a non-pnpm entrypoint"}.`);
   }
 
   return issues;
@@ -47,9 +47,9 @@ if (isMainModule()) {
 
   if (issues.length > 0) {
     console.error([
-      `${appConfig.productTitle ?? "NaNaBigV"} requires Node.js 26 and the pinned Yarn release.`,
+      `${appConfig.productTitle ?? "NaNaBigV"} requires Node.js 26 and the pinned pnpm release.`,
       ...issues,
-      "Install Corepack with `npm install --global corepack@0.35.0`, then run through `corepack yarn`.",
+      "Install Corepack with `npm install --global corepack@0.35.0`, then run through `corepack pnpm`.",
     ].join("\n"));
     process.exitCode = 1;
   }
