@@ -120,6 +120,6 @@ function greaterThan(a, b) {
 }
 
 function throwUsage() {
-  console.error("Usage: yarn version:bump <patch|minor|major|<x.y.z>>");
+  console.error("Usage: pnpm version:bump <patch|minor|major|<x.y.z>>");
   process.exit(1);
 }
