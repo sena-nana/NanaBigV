@@ -4,9 +4,9 @@ import {
   createWebHistory,
   type RouterHistory,
 } from "vue-router";
+import { installCommandRegistry } from "@lilia/ui/commands";
 import AppRoot from "./AppRoot.vue";
 import { commands } from "./commands";
-import { installCommandRegistry } from "./ui/commands";
 import { activeUIPreset, type BigVUIPresetAdapter } from "./ui/preset";
 
 export function createBigVApp(
@@ -21,9 +21,6 @@ export function createBigVApp(
   const router = createBigVRouter(history, preset);
 
   preset.install?.(app);
-  for (const capability of preset.appCapabilities ?? []) {
-    capability.install(app);
-  }
   installCommandRegistry(app, commands);
   app.use(router);
   if (

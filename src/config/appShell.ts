@@ -25,8 +25,6 @@ export const APP_METADATA = {
 
 export const APP_SHELL_COPY = appConfig.shell;
 
-export const APP_TITLE = APP_METADATA.productTitle;
-
 const WORKBENCH_NAV_ICONS: Record<WorkbenchNavItem["key"], Component> = {
   workspace: Gauge,
   live: Radar,

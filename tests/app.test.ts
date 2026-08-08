@@ -1,19 +1,35 @@
 import { screen, waitFor } from "@testing-library/vue";
-import { defineComponent, h } from "vue";
-import { RouterView, createMemoryHistory } from "vue-router";
-import { afterEach, describe, expect, it } from "vitest";
+import { createMemoryHistory } from "vue-router";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBigVApp } from "../src/app";
-import type { BigVUIPresetAdapter } from "../src/ui/preset";
+import { SIDEBAR_NAV } from "../src/config/appShell";
+import { resetProviderSettingsStateForTest } from "../src/composables/useProviderSettings";
+
+const mockInvoke = vi.hoisted(() =>
+  vi.fn<(command: string, payload?: Record<string, unknown>) => Promise<unknown>>(),
+);
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: (command: string, payload?: Record<string, unknown>) =>
+    mockInvoke(command, payload),
+}));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({
+    isMaximized: vi.fn(async () => false),
+    onResized: vi.fn(async () => vi.fn()),
+    minimize: vi.fn(async () => undefined),
+    toggleMaximize: vi.fn(async () => undefined),
+    close: vi.fn(async () => undefined),
+  }),
+}));
 
 const mounted: Array<() => void> = [];
-afterEach(() => {
-  while (mounted.length) mounted.pop()?.();
-});
 
-async function mountPreset(preset: BigVUIPresetAdapter, path = "/workspace") {
+async function mountApp(path = "/workspace") {
   const root = document.createElement("div");
   document.body.append(root);
-  const { app, router } = createBigVApp(createMemoryHistory(), preset);
+  const { app, router } = createBigVApp(createMemoryHistory());
   await router.push(path);
   await router.isReady();
   app.mount(root);
@@ -24,43 +40,84 @@ async function mountPreset(preset: BigVUIPresetAdapter, path = "/workspace") {
   return root;
 }
 
-const policy = {
-  density: "compact",
-  advancedDisclosure: "visible",
-  errorPresentation: "technical",
-  selectionPresentation: "outline",
-  feedbackStrength: "minimal",
-  sidebarDefault: "expanded",
-  destructiveAction: "application",
-} as const;
-
-function mockPreset(label: string): BigVUIPresetAdapter {
-  const Shell = defineComponent({
-    setup: () => () => h("main", { "data-agent-id": "mock.lilia.shell" }, h(RouterView)),
+beforeEach(() => {
+  resetProviderSettingsStateForTest();
+  mockInvoke.mockReset();
+  mockInvoke.mockImplementation(async (command) => {
+    if (command === "load_provider_config") {
+      return {
+        baseUrl: "https://example.com/v1",
+        apiKey: "sk-app-test",
+        model: "gpt-4.1-mini",
+      };
+    }
+    if (command === "load_live_assist_config") {
+      return {
+        currentPlanId: null,
+        plans: [],
+        audienceGroups: [],
+        topicCards: [],
+        outline: {
+          opening: "",
+          mainContent: "",
+          interactionPoints: [],
+          closing: "",
+          forbiddenDetours: [],
+        },
+        memeLibrary: {
+          roomMemes: [],
+          catchphrases: [],
+          fanNames: [],
+          disabledMemes: [],
+          recentMemes: [],
+          expiredMemes: [],
+        },
+        safety: {
+          outputMode: "manual_review",
+          requireManualConfirmation: true,
+          basicRules: [],
+          qualityFilters: [],
+          maxGeneratedPerMinute: 8,
+          maxConsecutivePerTopic: 3,
+        },
+        generationRecords: [],
+      };
+    }
+    if (command === "load_context_window") {
+      return { windowStartedAt: 0, windowSeconds: 300, events: [], sourceStatuses: [] };
+    }
+    if (command === "load_memory_snapshot") {
+      return {
+        hostProfile: null,
+        longTermFacts: [],
+        audienceProfiles: [],
+        sessionSummaries: [],
+      };
+    }
+    return null;
   });
-  const Page = defineComponent({ setup: () => () => h("h1", label) });
-  return {
-    id: "lilia",
-    shell: Shell,
-    policy,
-    defaultDensity: policy.density,
-    capabilities: [],
-    routes: [{ path: "workspace", component: async () => Page }],
-  };
-}
+});
+
+afterEach(() => {
+  while (mounted.length) mounted.pop()?.();
+});
 
 describe("application assembly", () => {
-  it("mounts the active Lilia shell and settings provider", async () => {
-    const active = (await import("../src/ui/preset")).activeUIPreset;
-    const root = await mountPreset(active, "/workspace");
+  it("挂载 Lilia shell 与主导航", async () => {
+    await mountApp("/workspace");
     await waitFor(() => {
-      expect(root.querySelector('[data-agent-id="app-shell"]')).not.toBeNull();
+      expect(document.querySelector('[data-agent-id="app-shell"]')).not.toBeNull();
     });
-    expect(window.__liliaAgentDebug).toBeUndefined();
+    for (const item of SIDEBAR_NAV) {
+      expect(screen.getByRole("link", { name: item.label })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("link", { name: "设置" })).toBeInTheDocument();
   });
 
-  it("creates independent routers from injected adapters", async () => {
-    await mountPreset(mockPreset("Mock page"), "/workspace");
-    await screen.findByRole("heading", { name: "Mock page" });
+  it("设置页切换为设置侧栏", async () => {
+    await mountApp("/settings");
+    expect(await screen.findByRole("heading", { level: 1, name: "外观" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "设置分类" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "主导航" })).toBeNull();
   });
 });

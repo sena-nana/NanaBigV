@@ -12,10 +12,10 @@ import {
 } from "@lilia/ui/runtime";
 import ContextMenuHost from "@lilia/ui/components/ContextMenuHost";
 import OverlayHost from "@lilia/ui/components/OverlayHost";
+import type { AppUIPresetAdapter } from "@lilia/ui-contract";
 import appConfigJson from "../../app.config.json";
 import { defineComponent, h, type Component } from "vue";
 import { APP_METADATA, SETTINGS_ICON_MAP } from "../config/appShell";
-import type { AppUIPresetAdapter } from "./contract";
 import type { BigVUIPresetAdapter } from "./types";
 import ActiveShell from "./ActiveShell.vue";
 
