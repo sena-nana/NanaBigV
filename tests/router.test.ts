@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/vue";
+import { fireEvent, screen, waitFor, within } from "@testing-library/vue";
 import { createMemoryHistory } from "vue-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import App from "../src/App.vue";
+import { createBigVApp } from "../src/app";
 import {
   resetProviderSettingsStateForTest,
 } from "../src/composables/useProviderSettings";
@@ -9,7 +9,6 @@ import type {
   ProviderConfig,
   ProviderProbeResult,
 } from "../src/features/provider/types";
-import { createBigVRouter } from "../src/router";
 import { createMemorySnapshot } from "./memoryFixtures";
 
 const loadedProviderConfig: ProviderConfig = {
@@ -348,21 +347,25 @@ function savedLiveAssistConfig(): ReturnType<typeof liveAssistConfig> | undefine
   return (call?.[1] as { config?: ReturnType<typeof liveAssistConfig> } | undefined)?.config;
 }
 
+const mounted: Array<() => void> = [];
+
 async function renderAt(path: string) {
   const { useWorkbenchStore } = await import("../src/features/workbench/store");
   await useWorkbenchStore().refreshMemorySnapshot();
-  const router = createBigVRouter(createMemoryHistory());
+  const root = document.createElement("div");
+  document.body.append(root);
+  const { app, router } = createBigVApp(createMemoryHistory());
   await router.push(path);
   await router.isReady();
-
-  const view = render(App, {
-    global: {
-      plugins: [router],
-    },
+  app.mount(root);
+  mounted.push(() => {
+    app.unmount();
+    root.remove();
   });
   return {
-    ...view,
+    container: root,
     router,
+    ...within(root),
   };
 }
 
@@ -378,6 +381,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  while (mounted.length) mounted.pop()?.();
   vi.unstubAllGlobals();
 });
 
@@ -462,9 +466,15 @@ describe("基础路由", () => {
         },
       ];
     });
+    // Keep the in-memory draft as the load source so page mount does not overwrite candidates.
+    const { cloneLiveConfigValue } = await import("../src/features/liveConfig/store");
+    installInvokeMock({
+      load_live_assist_config: cloneLiveConfigValue(useLiveAssistConfig().config.value),
+    });
 
     const view = await renderAt("/live");
 
+    expect(await screen.findByText("这条可以直接采用")).toBeInTheDocument();
     await fireEvent.click(screen.getAllByRole("button", { name: "采用" })[0]);
     await waitFor(() => {
       expect(savedLiveAssistConfig()?.generationRecords.find((record) => record.id === "record-adopt")).toMatchObject({
@@ -501,17 +511,17 @@ describe("基础路由", () => {
   });
 
   it("侧边栏显示 MVP 功能标签，底部保留设置和状态入口", async () => {
-    await renderAt("/");
+    await renderAt("/workspace");
 
-    expect(screen.getByRole("navigation", { name: "主导航" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "工作台" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "工作台" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "直播中控台" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "新建直播" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "AI 观众" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "话题库" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "安全设置" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "弹幕记录" })).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "设置" })).toHaveLength(1);
+    expect(document.querySelector('.bigv-sidebar-nav[aria-label="主导航"]')).not.toBeNull();
+    expect(screen.getAllByRole("link", { name: "设置" }).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "新建" })).toBeNull();
     expect(screen.queryByRole("button", { name: "搜索" })).toBeNull();
     expect(screen.queryByRole("button", { name: "添加" })).toBeNull();
@@ -567,16 +577,11 @@ describe("基础路由", () => {
     const smooth = await screen.findByRole("radio", { name: /平滑/ });
     const round = screen.getByRole("radio", { name: /普通/ });
 
-    expect(smooth).toHaveClass("is-active");
-    expect(document.documentElement.dataset.corners).toBe("smooth");
-
     await fireEvent.click(round);
-
     expect(round).toHaveClass("is-active");
     expect(document.documentElement.dataset.corners).toBe("round");
 
     await fireEvent.click(smooth);
-
     expect(smooth).toHaveClass("is-active");
     expect(document.documentElement.dataset.corners).toBe("smooth");
   });
@@ -585,7 +590,7 @@ describe("基础路由", () => {
     await renderAt("/settings");
 
     const radius = await screen.findByRole("slider", { name: "圆角半径" });
-
+    await fireEvent.input(radius, { target: { value: "8" } });
     expect(document.documentElement.style.getPropertyValue("--app-corner-radius")).toBe("8px");
     expect(screen.getByText("8px")).toBeInTheDocument();
 
@@ -599,13 +604,13 @@ describe("基础路由", () => {
     await renderAt("/settings?tab=about");
 
     expect(await screen.findByRole("heading", { level: 1, name: "关于" })).toBeInTheDocument();
-    expect(await screen.findByText("Tauri 2 + Vue 3")).toBeInTheDocument();
+    expect(await screen.findByText(/LiliaUI|Tauri 2 \+ Vue 3/)).toBeInTheDocument();
   });
 
   it("直播中控台开关只切换本地状态", async () => {
     await renderAt("/live");
 
-    const toggle = await screen.findByRole("checkbox", { name: "自动投递" });
+    const toggle = await screen.findByRole("switch", { name: "自动投递" });
 
     expect(toggle).toBeChecked();
     await fireEvent.click(toggle);

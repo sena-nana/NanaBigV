@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { calculateNextVersion } from "../scripts/version-bump.mjs";
+import { calculateNextVersion } from "@lilia/config";
 
 describe("版本号提升工具", () => {
   it("支持 patch/minor/major 递增", () => {
@@ -22,6 +22,6 @@ describe("版本号提升工具", () => {
   it("版本提升脚本已注册到 package.json", () => {
     const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf-8"));
 
-    expect(pkg.scripts["version:bump"]).toBe("node scripts/version-bump.mjs");
+    expect(pkg.scripts["version:bump"]).toBe("lilia-tools version-bump");
   });
 });

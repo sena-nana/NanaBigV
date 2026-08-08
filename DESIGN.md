@@ -44,7 +44,7 @@ NaNaBigV 是工程工具，不是营销站点，也不是通用聊天应用。�
 
 ## 4. 色彩与令牌
 
-优先使用 `src/styles.css` 中已有 CSS 变量。
+优先使用 LiliaUI 主题令牌（经 `src/ui/styles.css` 引入 `@lilia/ui/styles.css` / `@lilia/theme`）。
 
 - `--bg` / `--bg-elev`：主背景和浮层。
 - `--text` / `--text-muted` / `--text-faint`：主文本、次文本、弱提示。

@@ -4,6 +4,11 @@
   "version": "0.1.0",
   "identifier": "com.nanabigv.desktop",
   "storageKeyPrefix": "nanabigv",
+  "ui": {
+    "preset": "lilia",
+    "density": "compact",
+    "accent": "blue"
+  },
   "shell": {
     "homeTitle": "工作台",
     "workspaceSectionTitle": "工作台",

@@ -1,52 +1,20 @@
 /// <reference types="vitest" />
-import { readFileSync } from "node:fs";
-import { defineConfig } from "vite";
-import vue from "@vitejs/plugin-vue";
+import { defineLiliaViteConfig } from "@lilia/config";
+import appConfig from "./app.config.json";
+import { uiBundleGuard } from "./scripts/ui-bundle-guard";
 
-const appConfig = JSON.parse(readFileSync(new URL("./app.config.json", import.meta.url), "utf8")) as {
-  productTitle: string;
-  storageKeyPrefix: string;
-};
-
-const host = process.env.TAURI_DEV_HOST;
-const templateDevPort = Number.parseInt(process.env.TAURI_TEMPLATE_DEV_PORT ?? "", 10);
-const strictPort = process.env.TAURI_TEMPLATE_DEV_STRICT_PORT === "1";
-const port = Number.isInteger(templateDevPort) ? templateDevPort : 1420;
-
-export default defineConfig(async () => ({
-  plugins: [
-    vue(),
-    {
-      name: "app-config-html",
-      transformIndexHtml(html) {
-        return html
-          .replaceAll("%APP_PRODUCT_TITLE%", escapeHtml(appConfig.productTitle))
-          .replaceAll("%APP_STORAGE_KEY_PREFIX%", escapeHtml(appConfig.storageKeyPrefix));
+export default defineLiliaViteConfig({
+  plugins: [uiBundleGuard((appConfig.ui?.preset as "lilia" | "nana") ?? "lilia")],
+  test: {
+    server: {
+      deps: {
+        inline: [
+          "@lilia/ui",
+          "@lilia/theme",
+          "@lilia/ui-contract",
+          "@lilia/ui-foundation",
+        ],
       },
     },
-  ],
-  clearScreen: false,
-  server: {
-    port,
-    strictPort: strictPort || port === 1420,
-    host: host || false,
-    hmr: host
-      ? {
-          protocol: "ws",
-          host,
-          port: 1421,
-        }
-      : undefined,
-    watch: {
-      ignored: ["**/src-tauri/**"],
-    },
   },
-}));
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
+});
