@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useWorkbenchDebugSettings } from "../../composables/useWorkbenchDebug";
 import ToggleSwitch from "../../components/ToggleSwitch.vue";
+import "@lilia/ui/styles/page.css";
 
 const { mockDataSourceEnabled } = useWorkbenchDebugSettings();
 </script>

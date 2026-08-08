@@ -2,6 +2,7 @@
 import { Download } from "@lucide/vue";
 import { computed } from "vue";
 import { useProviderSettings } from "../../composables/useProviderSettings";
+import "@lilia/ui/styles/page.css";
 
 const settings = useProviderSettings();
 

@@ -1,13 +1,11 @@
-import { defineComponent, nextTick, ref } from "vue";
+import { defineComponent } from "vue";
 import { fireEvent, render } from "@testing-library/vue";
 import { beforeEach, describe, expect, it } from "vitest";
-import { SIDEBAR_CONFIG } from "../src/config/appShell";
 import {
   usePersistentBoolean,
   usePersistentNumber,
   usePersistentString,
 } from "../src/composables/usePersistentState";
-import { useShellSidebar } from "../src/composables/useShellSidebar";
 
 beforeEach(() => {
   localStorage.clear();
@@ -80,43 +78,3 @@ describe("persistent state composables", () => {
   });
 });
 
-describe("shell sidebar composable", () => {
-  it("组合宽度、折叠状态和 disabled 规则", async () => {
-    localStorage.setItem(SIDEBAR_CONFIG.widthStorageKey, "260");
-    const Probe = defineComponent({
-      setup() {
-        const locked = ref(false);
-        const sidebar = useShellSidebar(locked);
-        return { locked, sidebar };
-      },
-      template: `
-        <div>
-          <button aria-label="toggle" @click="sidebar.toggleCollapsed" />
-          <button aria-label="lock" @click="locked = !locked" />
-          <span data-testid="collapsed">{{ String(sidebar.effectiveCollapsed.value) }}</span>
-          <span data-testid="width">{{ sidebar.widthStyle.value }}</span>
-          <span data-testid="min">{{ sidebar.minWidth }}</span>
-          <span data-testid="max">{{ sidebar.maxWidth }}</span>
-        </div>
-      `,
-    });
-
-    const view = render(Probe);
-    expect(view.getByTestId("width")).toHaveTextContent("260px");
-    expect(view.getByTestId("min")).toHaveTextContent("180");
-    expect(view.getByTestId("max")).toHaveTextContent("480");
-
-    await fireEvent.click(view.getByRole("button", { name: "toggle" }));
-    await nextTick();
-
-    expect(view.getByTestId("collapsed")).toHaveTextContent("true");
-    expect(view.getByTestId("width")).toHaveTextContent("0px");
-    expect(localStorage.getItem(SIDEBAR_CONFIG.collapsedStorageKey)).toBe("1");
-
-    await fireEvent.click(view.getByRole("button", { name: "lock" }));
-    await nextTick();
-
-    expect(view.getByTestId("collapsed")).toHaveTextContent("false");
-    expect(view.getByTestId("width")).toHaveTextContent("260px");
-  });
-});

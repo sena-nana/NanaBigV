@@ -8,11 +8,16 @@
 
 ```text
 NaNaBigV/
-├── src/                 # Vue 3 前端页面、运行态和功能模块
-├── src-tauri/           # Tauri 2 Rust 命令与本地 store
+├── src/                 # Vue 3 前端：装配层、业务页、运行态
+│   ├── app.ts           # createBigVApp 装配入口
+│   ├── ui/              # LiliaUI facade（preset / ActiveShell / styles）
+│   ├── pages/           # NaNaBigV MVP 业务页面
+│   └── features/        # liveConfig / workbench / provider / memory 等
+├── src-tauri/           # Tauri 2 Rust 命令、lilia plugin 与本地 store
 ├── docs/                # VitePress 文档站
 ├── tests/               # Vitest + Testing Library
-├── scripts/             # 本地开发脚本
+├── scripts/             # LiliaUI 依赖切换与 bundle guard
+├── lilia.tools.profile.mjs
 ├── README.md
 ├── DESIGN.md
 └── AGENTS.md
@@ -20,7 +25,9 @@ NaNaBigV/
 
 关键落点：
 
-- `src/features/liveConfig/`：直播方案、观众组、话题库、安全设置和生成记录的前端类型、API 与 store。
+- UI 基建依赖 **sena-nana/LiliaUI**（`@lilia/ui` / `build` / `tools` / `config` / `theme` 等，GitHub 同 commit pin）。
+- `src/ui/`：应用侧 facade；业务页从本地入口或 `@lilia/*` 导入共享壳层与控件。
+- `src/features/liveConfig/`：直播方案、观众组、话题库、安全设置和生成记录。
 - `src-tauri/src/live_config.rs`：Tauri 本地配置读写命令。
 - `src/features/workbench/`：主播语音、Echo-Live、planner、eventRuntime、provider 和记忆写回的运行态。
 - `src/pages/`：NaNaBigV MVP 信息架构页面。
@@ -37,7 +44,8 @@ yarn dev
 yarn tauri:dev
 ```
 
-`yarn tauri:dev` 会自动寻找可用本地端口，再把对应 `devUrl` 传给 Tauri。
+- `yarn dev` / `yarn tauri:dev` 走 `lilia-build`。
+- `yarn liliaui:status` 查看 LiliaUI 依赖来源；`yarn liliaui:local` / `yarn liliaui:remote` 可在本地 portal 与远端 pin 之间切换。
 
 ## 文档开发
 
@@ -58,11 +66,11 @@ yarn docs:build
 yarn verify
 ```
 
-- `yarn test`：前端单测。
-- `yarn build`：前端构建。
-- `cargo check --manifest-path src-tauri/Cargo.toml`：Tauri Rust 编译检查。
+- `yarn test`：`lilia-build test` 前端单测。
+- `yarn build`：`lilia-build build` + UI bundle guard。
+- `cargo check --manifest-path src-tauri/Cargo.toml`：Tauri Rust 编译检查（含 `tauri-plugin-lilia`）。
 - `yarn docs:build`：文档站构建与链接基础校验。
-- `yarn verify`：串行运行前端测试、前端构建和 Rust 编译检查。
+- `yarn verify`：完整应用验证（含 cargo check）。
 
 按影响范围运行最小必要验证。文档改动至少建议执行 `yarn docs:build`。
 

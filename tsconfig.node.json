@@ -1,10 +1,8 @@
 {
-  "compilerOptions": {
-    "composite": true,
-    "skipLibCheck": true,
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "allowSyntheticDefaultImports": true
-  },
-  "include": ["vite.config.ts", "vitest.config.ts"]
+  "extends": "@lilia/config/tsconfig/node.json",
+  "include": [
+    "vite.config.ts",
+    "scripts/**/*.ts",
+    "docs/.vitepress/config.ts"
+  ]
 }

@@ -25,6 +25,11 @@ function appConfig() {
     version: string;
     identifier: string;
     storageKeyPrefix: string;
+    ui?: {
+      preset?: string;
+      density?: string;
+      accent?: string;
+    };
     shell: {
       homeTitle: string;
       workspaceSectionTitle: string;
@@ -35,39 +40,39 @@ function appConfig() {
 }
 
 describe("单应用模板工具链", () => {
-  it("根 package.json 直接提供单应用脚本，不包含 workspace", () => {
+  it("根 package.json 提供 Lilia 工具链脚本，不包含 workspace", () => {
     const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf-8"));
 
     expect(pkg.workspaces).toBeUndefined();
     expect(pkg.packageManager).toMatch(/^yarn@4\.17\.1\+sha512\./);
     expect(pkg.scripts).toMatchObject({
-      "sync:app-config": "node scripts/sync-app-config.mjs",
-      "check:toolchain": "node scripts/check-toolchain.ts",
-      predev: "node scripts/prepare-app.mjs",
-      dev: "vite",
-      prebuild: "node scripts/prepare-app.mjs",
-      build: "vue-tsc --noEmit && vite build",
-      pretest: "node scripts/prepare-app.mjs",
-      test: "vitest run",
-      "docs:dev": "vitepress dev docs",
-      "docs:build": "vitepress build docs",
-      "docs:preview": "vitepress preview docs",
-      tauri: "tauri",
-      "tauri:dev": "node scripts/tauri-dev.mjs",
-      "tauri:build": "tauri build",
-      verify: "yarn typecheck:node-scripts && yarn test && yarn build && cargo check --manifest-path src-tauri/Cargo.toml",
+      "sync:app-config": "lilia-tools sync-app-config",
+      "version:bump": "lilia-tools version-bump",
+      dev: "lilia-build dev",
+      build: "lilia-build build && node scripts/check-ui-bundle.mjs",
+      pretest: "lilia-build prepare",
+      test: "lilia-build test",
+      "docs:dev": "lilia-build docs dev",
+      "docs:build": "lilia-build docs build",
+      "tauri:dev": "lilia-build tauri-dev",
+      "tauri:build": "lilia-build tauri-build",
+      "liliaui:status": "yarn check:package-manager && node scripts/lilia-ui-deps.mjs status",
     });
+    expect(pkg.scripts.verify).toContain("lilia-build verify");
   });
 
-  it("只保留通用 Tauri/Vue 依赖，不包含 Lilia agent 业务依赖", () => {
+  it("依赖 LiliaUI 官方 Layer 与 BigV 业务依赖，不包含 agent SDK", () => {
     const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf-8"));
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
 
     expect(deps.vue).toBeDefined();
     expect(deps["vue-router"]).toBeDefined();
+    expect(deps["@lilia/ui"]).toBeDefined();
+    expect(deps["@lilia/build"]).toBeDefined();
+    expect(deps["@lilia/theme"]).toBeDefined();
     expect(deps["@tauri-apps/api"]).toBeDefined();
     expect(deps["@tauri-apps/plugin-store"]).toBeDefined();
-    expect(deps.vitepress).toBeDefined();
+    expect(deps["chart.js"]).toBeDefined();
     expect(deps["@anthropic-ai/claude-agent-sdk"]).toBeUndefined();
     expect(deps["@openai/codex-sdk"]).toBeUndefined();
     expect(deps["@modelcontextprotocol/sdk"]).toBeUndefined();
@@ -75,10 +80,11 @@ describe("单应用模板工具链", () => {
     expect(deps.zod).toBeUndefined();
   });
 
-  it("Rust 端使用 store 持久化和 reqwest Provider HTTP 调用", () => {
+  it("Rust 端使用 store、lilia plugin 和 reqwest Provider HTTP 调用", () => {
     const cargo = readFileSync(resolve("src-tauri/Cargo.toml"), "utf-8");
 
     expect(cargo).toContain('tauri-plugin-store = "2"');
+    expect(cargo).toContain("tauri-plugin-lilia");
     expect(cargo).toContain('reqwest = { version = "0.12"');
     expect(cargo).not.toContain("rusqlite");
     expect(cargo).not.toContain("r2d2");
@@ -118,82 +124,35 @@ describe("单应用模板工具链", () => {
     expect(bad.status).toBe(1);
   });
 
-  it("Tauri dev 脚本 dry-run 输出动态端口配置", () => {
-    const run = spawnSync("node", ["scripts/tauri-dev.mjs", "--verbose"], {
-      cwd: resolve("."),
-      env: {
-        ...process.env,
-        TAURI_TEMPLATE_DEV_DRY_RUN: "1",
-        TAURI_TEMPLATE_DEV_PORT: "34120",
-      },
-      encoding: "utf-8",
-    });
-
-    expect(run.status).toBe(0);
-    const parsed = JSON.parse(run.stdout) as {
-      args: string[];
-      devUrl: string;
-      env: Record<string, string>;
-    };
-    expect(parsed.devUrl).toBe("http://localhost:34120");
-    expect(parsed.args).toContain("tauri");
-    expect(parsed.args).toContain("dev");
-    expect(parsed.args).toContain("--config");
-    expect(parsed.args).toContain("--verbose");
-    expect(parsed.env).toMatchObject({
-      TAURI_TEMPLATE_DEV_PORT: "34120",
-      TAURI_TEMPLATE_DEV_STRICT_PORT: "1",
-    });
-  });
-
-  it("GitHub workflow 使用模板路径和通用发布配置", () => {
-    const ci = readFileSync(resolve(".github/workflows/ci.yml"), "utf-8");
-    const release = readFileSync(resolve(".github/workflows/release.yml"), "utf-8");
-    const pages = readFileSync(resolve(".github/workflows/pages.yml"), "utf-8");
-    const combined = [ci, release, pages].join("\n");
-
-    expect(ci).toContain("corepack yarn verify");
-    expect(ci).toContain("corepack yarn docs:build");
-    expect(ci).toContain("src-tauri/target");
-    expect(release).toContain("projectPath: .");
-    expect(release).toContain("Get-Content app.config.json -Raw");
-    expect(release).toContain("releaseName: ${{ steps.app_metadata.outputs.product_title }}");
-    expect(pages).toContain("docs/.vitepress/dist");
-    expect(pages).not.toContain("enablement: true");
-    expect(combined).not.toContain("apps/desktop");
-    expect(combined).not.toContain("LiliaCode");
-  });
-
-  it("app.config.json 是应用名称、标题和版本的同步来源", () => {
+  it("应用元数据、装配入口与 Lilia facade 对齐", () => {
     const config = appConfig();
-    const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf-8"));
     const tauri = JSON.parse(readFileSync(resolve("src-tauri/tauri.conf.json"), "utf-8"));
     const cargo = readFileSync(resolve("src-tauri/Cargo.toml"), "utf-8");
     const appShell = readFileSync(resolve("src/config/appShell.ts"), "utf-8");
-    const settingsPage = readFileSync(resolve("src/pages/Settings.vue"), "utf-8");
-    const secondaryPanel = readFileSync(resolve("src/layouts/SecondaryPanel.vue"), "utf-8");
-    const aboutSection = readFileSync(resolve("src/pages/settings/AboutSection.vue"), "utf-8");
+    const activeShell = readFileSync(resolve("src/ui/ActiveShell.vue"), "utf-8");
+    const activePreset = readFileSync(resolve("src/ui/activePreset.ts"), "utf-8");
+    const main = readFileSync(resolve("src/main.ts"), "utf-8");
     const indexHtml = readFileSync(resolve("index.html"), "utf-8");
+    const pkg = JSON.parse(readFileSync(resolve("package.json"), "utf-8"));
 
-    expect(pkg.name).toBe(config.appName);
-    expect(pkg.version).toBe(config.version);
+    expect(config.ui?.preset).toBe("lilia");
     expect(tauri.productName).toBe(config.productTitle);
     expect(tauri.version).toBe(config.version);
     expect(tauri.identifier).toBe(config.identifier);
     expect(tauri.app.windows[0].title).toBe(config.productTitle);
     expect(cargo).toContain(`version = "${config.version}"`);
     expect(appShell).toContain('import appConfig from "../../app.config.json"');
-    expect(appShell).toContain("APP_SHELL_COPY");
+    expect(appShell).toContain("SIDEBAR_NAV");
     expect(appShell).toContain("BIGV_WORKBENCH_SNAPSHOT.nav.map");
-    expect(secondaryPanel).toContain('aria-label="主导航"');
-    expect(secondaryPanel).toContain("APP_SHELL_COPY.workspaceSectionTitle");
-    expect(secondaryPanel).toContain("SIDEBAR_GLOBAL_ACTIONS");
-    expect(secondaryPanel).toContain("sb-section--actions");
-    expect(aboutSection).toContain("APP_METADATA.productTitle");
-    expect(aboutSection).toContain("APP_METADATA.version");
+    expect(activeShell).toContain('aria-label="主导航"');
+    expect(activeShell).toContain("LiliaAppShell");
+    expect(activePreset).toContain("setLiliaUiConfig");
+    expect(activePreset).toContain("provideSettings");
+    expect(main).toContain('import "./ui/styles.css"');
+    expect(main).toContain("createBigVApp");
     expect(indexHtml).toContain("%APP_PRODUCT_TITLE%");
     expect(indexHtml).toContain("%APP_STORAGE_KEY_PREFIX%.theme");
-    expect(settingsPage).not.toContain("APP_SHELL_COPY.settingsDescription");
+    expect(pkg.dependencies["@lilia/ui"]).toContain("github:sena-nana/LiliaUI");
   });
 
   it("GitHub Issue 模板不包含 Lilia 业务字段", () => {
@@ -214,60 +173,32 @@ describe("单应用模板工具链", () => {
   });
 });
 
-describe("Lilia 外壳样式迁移", () => {
-  it("保留侧栏折叠时的宽度、拖拽线和 reduced-motion 动效规则", () => {
-    const shellCss = readFileSync(resolve("src/styles/shell.css"), "utf-8");
-
-    expect(shellCss).toContain("transition: grid-template-columns 0.24s var(--sidebar-easing)");
-    expect(shellCss).toContain("left 0.24s var(--sidebar-easing)");
-    expect(shellCss).toContain("@media (prefers-reduced-motion: reduce)");
+describe("LiliaUI 接入契约", () => {
+  it("本地样式入口转发官方 Layer", () => {
+    const styles = readFileSync(resolve("src/ui/styles.css"), "utf-8");
+    expect(styles).toContain('@import "@lilia/ui/styles.css"');
   });
 
-  it("保留 Lilia 的透明按钮基线和显式强调态", () => {
-    const styles = readFileSync(resolve("src/styles.css"), "utf-8").replace(/\r\n/g, "\n");
+  it("应用装配层与 preset facade 就绪", () => {
+    const app = readFileSync(resolve("src/app.ts"), "utf-8");
+    const preset = readFileSync(resolve("src/ui/preset.ts"), "utf-8");
+    const profile = readFileSync(resolve("lilia.tools.profile.mjs"), "utf-8");
 
-    expect(styles).toContain("button {\n  background: transparent");
-    expect(styles).toContain("button.primary");
-    expect(styles).toContain("background: var(--accent-soft)");
-    expect(styles).toContain("button.ghost.danger:hover");
-    expect(styles).toContain("background: transparent");
+    expect(app).toContain("createBigVApp");
+    expect(app).toContain("installCommandRegistry");
+    expect(preset).toContain('appUIPresetId = "lilia"');
+    expect(preset).toContain("activeUIPreset");
+    expect(profile).toContain("@lilia/ui");
+    expect(profile).toContain("src/ui/preset.ts");
   });
 
-  it("全局圆角样式通过 corner-shape 渐进增强", () => {
-    const styles = readFileSync(resolve("src/styles.css"), "utf-8");
+  it("侧栏导航来自 workbench 快照", () => {
+    const appShell = readFileSync(resolve("src/config/appShell.ts"), "utf-8");
+    const activeShell = readFileSync(resolve("src/ui/ActiveShell.vue"), "utf-8");
 
-    expect(styles).toContain("--app-corner-shape: squircle");
-    expect(styles).toContain("--app-corner-radius: 8px");
-    expect(styles).toContain("--radius-md: var(--app-corner-radius)");
-    expect(styles).toContain(':root[data-corners="round"]');
-    expect(styles).toContain("@supports (corner-shape: squircle)");
-    expect(styles).toContain("corner-shape: var(--app-corner-shape)");
-  });
-
-  it("全局滚动条使用隐藏原生条和 overlay 显隐样式", () => {
-    const styles = readFileSync(resolve("src/styles.css"), "utf-8").replace(/\r\n/g, "\n");
-    const main = readFileSync(resolve("src/main.ts"), "utf-8");
-    const scrollbars = readFileSync(resolve("src/composables/useGlobalScrollbarVisibility.ts"), "utf-8");
-
-    expect(styles).toContain("scrollbar-width: none");
-    expect(styles).toContain("::-webkit-scrollbar {\n  width: 0;\n  height: 0;");
-    expect(styles).toContain(".global-scrollbar-overlay");
-    expect(styles).toContain("transition: opacity 0.48s ease");
-    expect(styles).toContain(".global-scrollbar-overlay.is-visible");
-    expect(main).toContain(
-      'import { installGlobalScrollbarVisibility } from "./composables/useGlobalScrollbarVisibility"',
-    );
-    expect(scrollbars).toContain("export function installGlobalScrollbarVisibility()");
-    expect(scrollbars).toContain("export function uninstallGlobalScrollbarVisibility()");
-  });
-
-  it("侧边栏切换为 NaNaBigV MVP 功能标签工作台布局", () => {
-    const secondaryPanel = readFileSync(resolve("src/layouts/SecondaryPanel.vue"), "utf-8");
-
-    expect(secondaryPanel).toContain("sb-section--actions");
-    expect(secondaryPanel).toContain('aria-label="主导航"');
-    expect(secondaryPanel).toContain("height: 28px");
-    expect(secondaryPanel).toContain("background: var(--bg-active)");
-    expect(secondaryPanel).not.toContain("sb-brand__title");
+    expect(appShell).toContain("SIDEBAR_NAV");
+    expect(activeShell).toContain("SIDEBAR_NAV");
+    expect(activeShell).toContain("LiliaSidebarNavRow");
+    expect(activeShell).not.toContain("sb-brand__title");
   });
 });
