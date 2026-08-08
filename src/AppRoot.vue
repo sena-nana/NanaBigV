@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Component } from "vue";
 import { RouterView } from "vue-router";
-import type { UIPolicy } from "./ui/contract";
+import type { UIPolicy } from "@lilia/ui-contract";
 
 defineProps<{
   provider?: Component;

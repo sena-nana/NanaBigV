@@ -6,4 +6,4 @@ export const appUIDefaultDensity = "compact" as const;
 // @lilia/ui-preset:end
 
 export { bigVPreset as activeUIPreset } from "./activePreset";
-export type { BigVAppCapability, BigVUIPresetAdapter } from "./types";
+export type { BigVUIPresetAdapter } from "./types";

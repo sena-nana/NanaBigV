@@ -185,7 +185,7 @@ describe("LiliaUI 接入契约", () => {
     const profile = readFileSync(resolve("lilia.tools.profile.mjs"), "utf-8");
 
     expect(app).toContain("createBigVApp");
-    expect(app).toContain("installCommandRegistry");
+    expect(app).toContain('from "@lilia/ui/commands"');
     expect(preset).toContain('appUIPresetId = "lilia"');
     expect(preset).toContain("activeUIPreset");
     expect(profile).toContain("@lilia/ui");
